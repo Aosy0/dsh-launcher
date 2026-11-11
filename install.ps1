@@ -13,6 +13,7 @@
 
 .PARAMETER InstallDir
     配置先。既定は %LOCALAPPDATA%\Programs\DshLauncher。
+    配置先にコピーされた install.ps1 から実行した場合は、そのフォルダ（dshl.exe と同じ場所）を既定にする。
 
 .PARAMETER NoShortcut
     スタートメニューのショートカットを作らない。
@@ -38,7 +39,7 @@
 [CmdletBinding()]
 param(
     [string]$Version = 'latest',
-    [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\DshLauncher'),
+    [string]$InstallDir,
     [switch]$NoShortcut,
     [switch]$Launch,
     [switch]$Uninstall,
@@ -71,6 +72,18 @@ $StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 $StartMenuShortcut = Join-Path $StartMenu $ShortcutName
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) $ShortcutName
 $ConfigDir = Join-Path $env:APPDATA 'DshLauncher'
+
+# An installed copy of this script sits next to dshl.exe: default to that folder so
+# `-Uninstall` (and reinstall) work without remembering a custom -InstallDir.
+if (-not $PSBoundParameters.ContainsKey('InstallDir')) {
+    $scriptRoot = ''
+    try { $scriptRoot = $PSScriptRoot } catch { }
+    if ($scriptRoot -and (Test-Path -LiteralPath (Join-Path $scriptRoot $ExeName))) {
+        $InstallDir = $scriptRoot
+    } else {
+        $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\DshLauncher'
+    }
+}
 $InstallExe = Join-Path $InstallDir $ExeName
 
 function Write-Step([string]$Message) {
@@ -138,8 +151,18 @@ if ($Uninstall) {
         }
     }
     if (Test-Path -LiteralPath $InstallDir) {
-        Remove-Item -LiteralPath $InstallDir -Recurse -Force
+        for ($attempt = 1; $attempt -le 5; $attempt++) {
+            try {
+                Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction Stop
+                break
+            } catch {
+                if ($attempt -eq 5) { throw "削除できませんでした（実行中のプロセスが残っている可能性）: $InstallDir`n$($_.Exception.Message)" }
+                Start-Sleep -Milliseconds 500
+            }
+        }
         Write-Host "    削除: $InstallDir"
+    } else {
+        Write-Host "    （配置先は見つかりませんでした: $InstallDir）"
     }
     if ($Purge -and (Test-Path -LiteralPath $ConfigDir)) {
         Remove-Item -LiteralPath $ConfigDir -Recurse -Force

@@ -60,7 +60,7 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | 設計・デザイン・決定事項 | [DESIGN.md](DESIGN.md) |
 | 開発・構成・障害対応 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 
-## 実装状況（v0.1.10 / 2026-11-11）
+## 実装状況（v0.1.11 / 2026-11-11）
 
 | 機能 | 状態 |
 |---|---|
@@ -77,8 +77,14 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 |
 | マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 |
 | PWA を開く（Brave アプリ、マシン非依存） | ✅ 実装・実機確認（DeepSeek Harness / Profile 5） |
-| 配布（GitHub Releases / install.ps1 / アイコン） | ✅ v0.1.10 |
+| 配布（GitHub Releases / install.ps1 / アイコン） | ✅ v0.1.10 から |
 | URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 |
+
+## 修正履歴（v0.1.11）
+
+- `install.ps1` の修正: 配置先にコピーされたインストーラから `-Uninstall` を実行したとき、
+  `-InstallDir` を指定してインストールしていても**元の配置先**（dshl.exe と同じフォルダ）を既定にする。
+  インストール先の削除はロックが外れるまで数回リトライする。
 
 ## 修正履歴（v0.1.10）
 
