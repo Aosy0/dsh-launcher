@@ -58,6 +58,7 @@ dotnet publish -c Release -r win-x64 --self-contained false `
    - framework-dependent `dshl-<ver>-win-x64-framework-dependent.exe`（約 0.5MB）
    - `install.ps1` と `SHA256SUMS.txt`
    を添付した Release を作成（`gh release create --generate-notes`）
+   インストール先には `install.ps1` / `update.cmd` / `uninstall.cmd` が置かれ、実行ポリシーに関係なく更新・削除できる
 6. 確認: `gh run list --workflow release.yml` / `gh release view v0.1.10` /
    インストール動作は `.\install.ps1 -Version v0.1.10 -InstallDir $env:TEMP\dshl-test -NoShortcut` で確認できる
 

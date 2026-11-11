@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate src/DshLauncher/app.ico from the launcher's visual language.
 
-Graphite rounded square, a `>_` prompt glyph, and the running-state dot.
+Graphite rounded square with the DSH wordmark. The earlier `>_` prompt glyph read as a
+terminal emulator, so the icon is now a plain letter mark.
 Requires Pillow (`python -m pip install pillow`).
 
 usage: python tools/make-icon.py
@@ -14,7 +15,7 @@ import struct
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_FILE = ROOT / "src" / "DshLauncher" / "app.ico"
@@ -22,6 +23,19 @@ PREVIEW_FILE = Path(__file__).resolve().parent / "icon-preview.png"
 SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 
 SUPERSAMPLE = 8
+WORDMARK = "DSH"
+FONT_CANDIDATES = [
+    "C:/Windows/Fonts/segoeuib.ttf",   # Segoe UI Bold
+    "C:/Windows/Fonts/seguisb.ttf",   # Segoe UI Semibold
+    "C:/Windows/Fonts/arialbd.ttf",
+]
+
+
+def _font(px: int) -> ImageFont.FreeTypeFont:
+    for candidate in FONT_CANDIDATES:
+        if Path(candidate).is_file():
+            return ImageFont.truetype(candidate, px)
+    return ImageFont.load_default(px)
 
 
 def render(size: int) -> Image.Image:
@@ -30,36 +44,25 @@ def render(size: int) -> Image.Image:
     image = Image.new("RGBA", (ss, ss), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
-    def u(value: float) -> float:
-        return value * ss
-
     pad = max(1.0, ss * 0.055)
-    radius = ss * 0.22
     draw.rounded_rectangle(
         [pad, pad, ss - pad, ss - pad],
-        radius=radius,
+        radius=ss * 0.22,
         fill=(0x1E, 0x1E, 0x21, 0xFF),
         outline=(0x46, 0x46, 0x4A, 0xFF),
         width=max(1, round(ss * 0.014)),
     )
 
-    stroke = max(1.0, ss * 0.095)
-    prompt = (0xED, 0xED, 0xED, 0xFF)
-
-    def line(points: list[tuple[float, float]]) -> None:
-        draw.line(points, fill=prompt, width=max(1, round(stroke)), joint="curve")
-        cap = stroke / 2
-        for x, y in points:
-            draw.ellipse([x - cap, y - cap, x + cap, y + cap], fill=prompt)
-
-    line([(u(0.255), u(0.335)), (u(0.395), u(0.500)), (u(0.255), u(0.665))])
-    line([(u(0.515), u(0.672)), (u(0.715), u(0.672))])
-
-    dot = max(1.0, ss * 0.072)
-    draw.ellipse(
-        [u(0.795) - dot, u(0.245) - dot, u(0.795) + dot, u(0.245) + dot],
-        fill=(0x4C, 0xC3, 0x8A, 0xFF),
-    )
+    ink = (0xED, 0xED, 0xED, 0xFF)
+    font = _font(max(8, round(ss * 0.40)))
+    box = draw.textbbox((0, 0), WORDMARK, font=font)
+    width, height = box[2] - box[0], box[3] - box[1]
+    target_width = ss * 0.64
+    if width > target_width:
+        font = _font(max(8, round(font.size * target_width / width)))
+        box = draw.textbbox((0, 0), WORDMARK, font=font)
+        width, height = box[2] - box[0], box[3] - box[1]
+    draw.text(((ss - width) / 2 - box[0], (ss - height) / 2 - box[1]), WORDMARK, font=font, fill=ink)
 
     return image.resize((size, size), Image.LANCZOS)
 

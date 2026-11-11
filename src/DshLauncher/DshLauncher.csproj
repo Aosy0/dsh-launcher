@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>dshl</AssemblyName>
-    <Version>0.1.11</Version>
+    <Version>0.1.12</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <AssemblyTitle>DSH Launcher</AssemblyTitle>
     <Product>DSH Launcher</Product>

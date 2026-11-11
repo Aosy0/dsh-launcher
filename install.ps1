@@ -215,6 +215,13 @@ try {
         try {
             Invoke-WebRequest -Uri $scriptAsset.browser_download_url -OutFile (Join-Path $InstallDir 'install.ps1') `
                 -Headers @{ 'User-Agent' = $UserAgent } -TimeoutSec 120 | Out-Null
+
+            # .cmd shims: the default Windows PowerShell execution policy can block .ps1 files,
+            # so updating/uninstalling from the installed folder goes through these instead.
+            $updateCmd = "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`" %*`r`n"
+            $uninstallCmd = "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`" -Uninstall %*`r`n"
+            Set-Content -Path (Join-Path $InstallDir 'update.cmd') -Value $updateCmd -Encoding Ascii
+            Set-Content -Path (Join-Path $InstallDir 'uninstall.cmd') -Value $uninstallCmd -Encoding Ascii
         } catch {
             Write-Warning "install.ps1 を配置できませんでした: $($_.Exception.Message)"
         }
@@ -227,15 +234,20 @@ $installedVersion = ''
 try { $installedVersion = ((& $InstallExe --version) | Out-String).Trim() } catch { }
 
 $installerPath = Join-Path $InstallDir 'install.ps1'
+$uninstallCmdPath = Join-Path $InstallDir 'uninstall.cmd'
+$updateCmdPath = Join-Path $InstallDir 'update.cmd'
 Write-Host ''
 Write-Host "インストールしました: $InstallExe" -ForegroundColor Green
 if ($installedVersion) { Write-Host "    バージョン: $installedVersion" }
 if (-not $NoShortcut) { Write-Host "    スタートメニュー: $AppName" }
 Write-Host "    起動: `"$InstallExe`""
-if (Test-Path -LiteralPath $installerPath) {
+if (Test-Path -LiteralPath $updateCmdPath) {
+    Write-Host "    更新: `"$updateCmdPath`""
+} elseif (Test-Path -LiteralPath $installerPath) {
     Write-Host "    更新: `"$installerPath`"  /  アンインストール: `"$installerPath`" -Uninstall"
-} else {
-    Write-Host '    更新: このスクリプトを再実行  /  アンインストール: -Uninstall'
+}
+if (Test-Path -LiteralPath $uninstallCmdPath) {
+    Write-Host "    アンインストール: `"$uninstallCmdPath`"（設定も消す: `"$uninstallCmdPath`" -Purge）"
 }
 Write-Host '    設定: %APPDATA%\DshLauncher\hosts.json（初回起動時に作成）'
 

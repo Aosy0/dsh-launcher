@@ -279,8 +279,10 @@ B（単一マシン型・タブ切替）は**マシン数が増えると破綻�
   - `dshl-<ver>-win-x64-framework-dependent.exe`: 約 0.5MB。.NET 9 Desktop Runtime が必要。
   - `install.ps1` と `SHA256SUMS.txt` を同梱。
 - **install.ps1**: latest の exe を取得 → SHA256 照合 → `%LOCALAPPDATA%\Programs\DshLauncher` に配置 →
-  スタートメニューにショートカット。自分自身も配置先にコピーし、更新・アンインストール（`-Uninstall`）に使う。
-- **アイコン**: `src/DshLauncher/app.ico`（`tools/make-icon.py` で生成）。ウィンドウ・トレイ・ショートカットを同じ意匠に。
+  スタートメニューにショートカット。自分自身と `update.cmd` / `uninstall.cmd` も配置先にコピーし、
+  既定の実行ポリシー（Restricted）でも更新・削除できるようにする。
+- **アイコン**: `src/DshLauncher/app.ico`（`tools/make-icon.py` で生成）。**DSH の文字マーク**
+  （`>_` のプロンプト記号はターミナルエミュレーターに見えるため廃止）。ウィンドウ・トレイ・ショートカットを同じ意匠に。
 - **署名**: なし。初回実行時の SmartScreen 警告は README で案内する。
 
 ---

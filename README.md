@@ -17,9 +17,10 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 
 - `%LOCALAPPDATA%\Programs\DshLauncher\dshl.exe` に配置し、スタートメニューに「DSH Launcher」を追加する
 - 配布物の SHA256 を `SHA256SUMS.txt` と照合してから配置する
-- 更新: 同じコマンドを再実行 / アンインストール（`-Purge` で設定・ログも削除）:
+- 更新: 同じコマンドを再実行、または `& "$env:LOCALAPPDATA\Programs\DshLauncher\update.cmd"`
+- アンインストール（設定・ログも消すなら `-Purge`）:
   ```powershell
-  & "$env:LOCALAPPDATA\Programs\DshLauncher\install.ps1" -Uninstall
+  & "$env:LOCALAPPDATA\Programs\DshLauncher\uninstall.cmd"
   ```
 
 ### ポータブル（インストールしない）
@@ -60,7 +61,7 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | 設計・デザイン・決定事項 | [DESIGN.md](DESIGN.md) |
 | 開発・構成・障害対応 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 
-## 実装状況（v0.1.11 / 2026-11-11）
+## 実装状況（v0.1.12 / 2026-11-11）
 
 | 機能 | 状態 |
 |---|---|
@@ -79,6 +80,13 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | PWA を開く（Brave アプリ、マシン非依存） | ✅ 実装・実機確認（DeepSeek Harness / Profile 5） |
 | 配布（GitHub Releases / install.ps1 / アイコン） | ✅ v0.1.10 から |
 | URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 |
+
+## 修正履歴（v0.1.12）
+
+- アプリアイコンを `>_` のプロンプト記号から **DSH の文字マーク**へ変更（ターミナルエミュレーターに見えるため）。
+  各サイズは `design/icon-sizes.png`。
+- インストール先に `update.cmd` / `uninstall.cmd` を追加。Windows の既定の実行ポリシー（Restricted）でも
+  更新・アンインストールができる（`powershell -ExecutionPolicy Bypass` 経由の .cmd）。
 
 ## 修正履歴（v0.1.11）
 
