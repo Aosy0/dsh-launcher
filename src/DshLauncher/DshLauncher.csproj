@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>dshl</AssemblyName>
+    <Version>0.1.9</Version>
+    <RootNamespace>DshLauncher</RootNamespace>
+    <StartupObject>DshLauncher.Program</StartupObject>
+    <ApplicationIcon />
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+</Project>
+
+

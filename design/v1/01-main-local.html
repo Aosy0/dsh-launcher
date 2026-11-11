@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>DSH Launcher — 01 local running</title>
+<style>
+  :root{
+    --deep:#0f0f10; --page:#141415; --card:#19191b; --raised:#232325;
+    --text:#ededed; --sec:#a1a1a6; --muted:#85858b;
+    --line:rgba(237,237,237,.08); --line2:rgba(237,237,237,.14);
+    --pos:#4cc38a; --neg:#e5484d; --attn:#d9a441;
+    --mono:"Cascadia Mono","Consolas",monospace;
+    --sans:"Segoe UI Variable Text","Segoe UI","Yu Gothic UI","Meiryo",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1120px;height:720px;overflow:hidden}
+  body{background:var(--page);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased}
+  .win{width:100%;height:100%;display:flex;background:var(--page);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  /* rail */
+  .rail{width:256px;flex:none;background:var(--deep);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:16px 12px}
+  .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 16px}
+  .glyph{width:24px;height:24px;border:1px solid var(--line2);border-radius:6px;display:grid;place-items:center;color:var(--sec);font-family:var(--mono);font-size:11px}
+  .brand-name{font-size:15px;font-weight:500;letter-spacing:-.01em}
+  .brand-sub{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
+  .navlabel{font-size:12px;color:var(--muted);padding:0 8px;margin:8px 0 8px}
+  .hosts{display:flex;flex-direction:column;gap:2px}
+  .host{display:flex;align-items:center;gap:10px;height:36px;padding:0 8px;border-radius:8px;border:1px solid transparent;color:var(--sec);cursor:default}
+  .host.sel{background:var(--raised);border-color:var(--line);color:var(--text);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+  .lamp{width:8px;height:8px;border-radius:50%;flex:none;background:var(--muted)}
+  .lamp.on{background:var(--pos)} .lamp.attn{background:var(--attn)} .lamp.off{background:#5a5a60} .lamp.err{background:var(--neg)}
+  .hname{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hmeta{margin-left:auto;font-size:11px;color:var(--muted);font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .add{display:flex;align-items:center;gap:8px;height:36px;margin-top:12px;padding:0 8px;border-radius:8px;color:var(--muted);font-size:13px}
+  .add svg{opacity:.9}
+  .railfoot{margin-top:auto;padding:12px 8px 0;border-top:1px solid var(--line);font-size:11px;color:var(--muted);display:flex;justify-content:space-between;font-family:var(--mono)}
+  /* main */
+  main{flex:1;display:flex;flex-direction:column;min-width:0}
+  header{height:56px;flex:none;display:flex;align-items:center;padding:0 24px;border-bottom:1px solid var(--line)}
+  h1{font-size:15px;font-weight:500;letter-spacing:-.01em}
+  .crumb{font-size:12px;color:var(--muted);margin-top:3px}
+  .hactions{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .btn{height:32px;padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:var(--raised);color:var(--text);font-size:13px;font-family:inherit;display:inline-flex;align-items:center;gap:8px}
+  .btn.primary{background:var(--text);border-color:var(--text);color:#141415;font-weight:500}
+  .btn svg{opacity:.85}
+  .quiet{color:var(--sec);font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:0 6px}
+  .body{padding:20px 24px 24px;display:flex;flex-direction:column;gap:20px;min-height:0}
+  /* status */
+  .status{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:20px}
+  .srow{display:flex;align-items:center;gap:10px}
+  .srow .lamp{width:10px;height:10px}
+  .state{font-size:24px;font-weight:500;letter-spacing:-.02em}
+  .since{margin-left:auto;font-size:12px;color:var(--muted);font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .facts{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:20px;border-top:1px solid var(--line)}
+  .fact{padding:14px 16px 0;border-left:1px solid var(--line)}
+  .fact:first-child{border-left:0;padding-left:0}
+  .flabel{font-size:11px;color:var(--muted);letter-spacing:.01em}
+  .fval{margin-top:6px;font-size:16px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .fval small{font-size:11px;color:var(--muted);margin-left:6px}
+  .urlrow{display:flex;align-items:center;gap:12px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-family:var(--mono);font-size:13px;color:var(--sec)}
+  .copy{margin-left:auto;color:var(--muted);display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12px}
+  /* receipt */
+  .receipt{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+  .rhead{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+  .rhead .hint{margin-left:auto;color:var(--muted)}
+  .rline{display:flex;align-items:center;gap:12px;padding:14px 16px;font-family:var(--mono);font-size:13px;color:var(--sec)}
+  .rline .cmd{color:var(--text)}
+  .k{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px solid var(--line2);border-radius:4px;padding:2px 5px;margin-left:auto}
+  /* logs */
+  .logs{flex:1;min-height:0;border:1px solid var(--line);border-radius:12px;background:var(--card);display:flex;flex-direction:column;overflow:hidden}
+  .lhead{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+  .lhead a{margin-left:auto;color:var(--muted);text-decoration:none;font-size:12px}
+  pre{padding:12px 16px;overflow:hidden;font-family:var(--mono);font-size:12px;line-height:1.9;color:#9b9ba1;font-variant-numeric:tabular-nums}
+  pre b{color:var(--pos);font-weight:400} pre i{color:#6f6f75;font-style:normal}
+  svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .svg14{width:14px;height:14px}
+</style>
+</head>
+<body>
+<div class="win">
+  <aside class="rail">
+    <div class="brand">
+      <div class="glyph">&gt;_</div>
+      <div><span class="brand-name">DeepSeek Harness</span><span class="brand-sub">Launcher</span></div>
+    </div>
+    <div class="navlabel">マシン</div>
+    <div class="hosts">
+      <div class="host sel">
+        <span class="lamp on"></span>
+        <span class="hname">このPC</span>
+        <span class="hmeta">3時間12分</span>
+      </div>
+      <div class="host">
+        <span class="lamp attn"></span>
+        <span class="hname">minipc-server</span>
+        <span class="hmeta">要設定</span>
+      </div>
+      <div class="host">
+        <span class="lamp attn"></span>
+        <span class="hname">cpswhitegtx1080ti</span>
+        <span class="hmeta">要設定</span>
+      </div>
+    </div>
+    <div class="add"><svg class="svg14" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>マシンを追加</div>
+    <div class="railfoot"><span>v0.1</span><span>dshl</span></div>
+  </aside>
+
+  <main>
+    <header>
+      <div><h1>このPC</h1><div class="crumb">web プロファイル · ポート 3080 · Windows</div></div>
+      <div class="hactions">
+        <button class="btn primary"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg>再起動</button>
+        <button class="btn"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>停止</button>
+        <a class="quiet" href="#"><svg class="svg14" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>ブラウザで開く</a>
+      </div>
+    </header>
+
+    <div class="body">
+      <section class="status">
+        <div class="srow"><span class="lamp on"></span><span class="state">稼働中</span><span class="since">最終起動 21:19</span></div>
+        <div class="facts">
+          <div class="fact"><div class="flabel">PID</div><div class="fval">55832</div></div>
+          <div class="fact"><div class="flabel">ポート</div><div class="fval">3080</div></div>
+          <div class="fact"><div class="flabel">稼働時間</div><div class="fval">3:12:04</div></div>
+          <div class="fact"><div class="flabel">メモリ</div><div class="fval">412<small>MB</small></div></div>
+        </div>
+        <div class="urlrow">
+          https://nzxt.tail34c6a3.ts.net/
+          <span class="copy"><svg class="svg14" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>コピー</span>
+        </div>
+      </section>
+
+      <section class="receipt">
+        <div class="rhead">実行されるコマンド<span class="hint">再起動時 · web プロファイル</span></div>
+        <div class="rline"><span class="cmd">dsh web --profile web --port 3080</span><span class="k">⏎</span></div>
+      </section>
+
+      <section class="logs">
+        <div class="lhead">ログ<span class="hint" style="margin-left:auto;color:var(--muted);font-size:12px">直近 50 行</span></div>
+        <pre><i>00:31:02</i>  dsh web <b>listening</b> on http://127.0.0.1:3080
+<i>00:31:03</i>  profile web · plugins 9 · patchReload live
+<i>00:31:05</i>  tailscale url ready: nzxt.tail34c6a3.ts.net
+<i>01:12:40</i>  session 4db2c0a9 opened
+<i>03:42:18</i>  compaction skipped · 21k tokens under budget</pre>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

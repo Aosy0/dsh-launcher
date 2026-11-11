@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>DSH Launcher — C tray first</title>
+<style>
+  :root{
+    --bg1:#171a20; --bg2:#0f1115; --card:#1e2026; --card-hi:#262931;
+    --border:rgba(255,255,255,.09); --text:#f4f5f7; --sub:#a2a6b0; --dim:#6d7079;
+    --accent:#4d6bfe; --accent-hi:#7c93ff; --ok:#3ddc84; --warn:#f5a623;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{width:1200px; height:780px; overflow:hidden;}
+  body{
+    color:var(--text); font-family:"Yu Gothic UI","Noto Sans JP","Meiryo","Segoe UI",sans-serif;
+    background:
+      radial-gradient(860px 460px at 20% 10%, rgba(77,107,254,.25), transparent 62%),
+      radial-gradient(700px 420px at 88% 88%, rgba(61,220,132,.10), transparent 60%),
+      linear-gradient(165deg,var(--bg1),var(--bg2));
+    -webkit-font-smoothing:antialiased;
+    padding:34px 40px;
+  }
+  .caption{position:absolute; font-size:15px; letter-spacing:.14em; color:var(--dim); text-transform:uppercase;}
+  .tray{position:absolute; left:44px; top:40px; display:flex; align-items:center; gap:18px;}
+  .tray-icon{
+    width:74px; height:74px; border-radius:20px; position:relative;
+    background:linear-gradient(145deg,#f6f8ff,#dfe5ff);
+    box-shadow:0 14px 30px rgba(0,0,0,.45), inset 0 1px 0 #fff;
+    display:grid; place-items:center;
+  }
+  .whale{width:42px; height:42px; border-radius:14px 14px 18px 18px;
+    background:linear-gradient(160deg,var(--accent-hi),var(--accent)); position:relative;}
+  .whale::after{content:""; position:absolute; left:8px; bottom:9px; width:8px; height:8px; border-radius:50%; background:#fff; opacity:.9;}
+  .badge{position:absolute; right:-4px; bottom:-4px; width:24px; height:24px; border-radius:50%;
+    background:var(--ok); border:4px solid #12141a; box-shadow:0 0 14px rgba(61,220,132,.8);}
+  .tray-label{font-size:20px; color:var(--sub);}
+  .tray-label small{display:block; font-size:15px; color:var(--dim); margin-top:4px;}
+
+  /* mini window */
+  .mini{
+    position:absolute; left:44px; top:212px; width:640px; border-radius:20px;
+    background:linear-gradient(180deg,#22242a,#1b1d22); border:1px solid var(--border);
+    box-shadow:0 30px 70px rgba(0,0,0,.55); overflow:hidden;
+  }
+  .mini-chrome{height:50px; display:flex; align-items:center; gap:14px; padding:0 22px; border-bottom:1px solid var(--border);}
+  .mini-chrome i{width:13px; height:13px; border-radius:50%; background:#ff5f57; display:block;}
+  .mini-chrome i:nth-child(2){background:#febc2e;} .mini-chrome i:nth-child(3){background:#28c840;}
+  .mini-chrome span{margin-left:auto; color:var(--dim); font-size:19px;}
+  .mini-body{padding:22px 26px 24px;}
+  .row{display:flex; align-items:center; gap:14px;}
+  .dot{width:16px; height:16px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 6px rgba(61,220,132,.15), 0 0 18px rgba(61,220,132,.6);}
+  .state{font-size:26px; font-weight:600;}
+  .meta{margin-left:auto; font-size:17px; color:var(--dim);}
+  .urlrow{margin-top:16px; display:flex; align-items:center; gap:16px; font-size:17px; color:var(--sub);}
+  .copy{color:var(--accent-hi); border:1px solid rgba(109,134,255,.45); border-radius:8px; padding:4px 12px; font-size:14px;}
+  .quick{display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:12px; margin-top:20px;}
+  .quick button{height:58px; border-radius:13px; border:1px solid var(--border); background:var(--card-hi);
+    color:var(--text); font-size:19px; font-family:inherit; cursor:pointer;}
+  .quick button.primary{border:0; background:linear-gradient(180deg,var(--accent-hi),var(--accent));
+    box-shadow:0 8px 22px rgba(77,107,254,.35); font-weight:600;}
+
+  /* tray menu */
+  .menu{
+    position:absolute; right:44px; top:150px; width:400px; border-radius:16px;
+    background:rgba(32,34,40,.97); border:1px solid rgba(255,255,255,.10);
+    box-shadow:0 30px 70px rgba(0,0,0,.6); padding:10px; backdrop-filter:blur(18px);
+  }
+  .menu-head{padding:14px 16px 16px; border-bottom:1px solid var(--border); margin-bottom:8px;}
+  .menu-head .t{font-size:21px; font-weight:600;}
+  .menu-head .s{font-size:15px; color:var(--sub); margin-top:6px; display:flex; align-items:center; gap:8px;}
+  .menu-head .s i{width:10px; height:10px; border-radius:50%; background:var(--ok); display:block;}
+  .item{height:52px; display:flex; align-items:center; gap:16px; padding:0 16px; border-radius:10px; font-size:20px;}
+  .item .k{margin-left:auto; font-size:15px; color:var(--dim);}
+  .item.hover{background:rgba(77,107,254,.22);}
+  .sep{height:1px; background:var(--border); margin:8px 10px;}
+  .foot-note{position:absolute; left:44px; bottom:26px; font-size:17px; color:var(--dim);}
+  .pill{display:inline-flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:999px;
+    padding:9px 18px; font-size:16px; color:var(--sub); margin-right:10px;}
+</style>
+</head>
+<body>
+  <div class="caption" style="right:44px; top:44px;">C — tray first</div>
+
+  <div class="tray">
+    <div class="tray-icon">
+      <div class="whale"></div>
+      <div class="badge"></div>
+    </div>
+    <div class="tray-label">タスクトレイ<small>緑=稼働中 / 灰=停止 / 橙=起動中</small></div>
+  </div>
+
+  <div class="mini">
+    <div class="mini-chrome"><i></i><i></i><i></i><span>— ✕</span></div>
+    <div class="mini-body">
+      <div class="row">
+        <span class="dot"></span>
+        <span class="state">稼働中</span>
+        <span class="meta">PID 55832 · :3080 · 3時間12分</span>
+      </div>
+      <div class="urlrow">https://nzxt.tail34c6a3.ts.net/ <span class="copy">コピー</span></div>
+      <div class="quick">
+        <button class="primary">再起動</button>
+        <button>停止</button>
+        <button>開く</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu">
+    <div class="menu-head">
+      <div class="t">DeepSeek Harness</div>
+      <div class="s"><i></i>稼働中 · PID 55832 · :3080</div>
+    </div>
+    <div class="item hover">ブラウザで開く <span class="k">↵</span></div>
+    <div class="sep"></div>
+    <div class="item">起動</div>
+    <div class="item">再起動</div>
+    <div class="item">停止</div>
+    <div class="sep"></div>
+    <div class="item">ログを開く</div>
+    <div class="item">プロファイル：web ▾</div>
+    <div class="sep"></div>
+    <div class="item">終了</div>
+  </div>
+
+  <div class="foot-note">
+    <span class="pill">左クリック：ミニ窓</span><span class="pill">右クリック：メニュー</span><span class="pill">CLI：dshl status --json</span>
+  </div>
+</body>
+</html>
+

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>DSH Launcher — A compact card</title>
+<style>
+  :root{
+    --bg:#1b1b1c; --layer:#232428; --layer2:#2b2c31; --border:rgba(255,255,255,.09);
+    --text:#f2f3f5; --sub:#a0a3ab; --dim:#6f7278;
+    --accent:#4d6bfe; --accent-hi:#6c86ff; --ok:#3ddc84;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{width:840px; height:600px; overflow:hidden;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"Yu Gothic UI","Noto Sans JP","Meiryo","Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .win{width:100%; height:100%; display:flex; flex-direction:column; border:1px solid var(--border);}
+  .chrome{height:56px; display:flex; align-items:center; gap:20px; padding:0 28px;
+    background:linear-gradient(180deg,#212226,#1d1e22); border-bottom:1px solid var(--border); flex:none;}
+  .dots{display:flex; gap:12px;}
+  .dots i{width:16px; height:16px; border-radius:50%; display:block;}
+  .dots i:nth-child(1){background:#ff5f57;} .dots i:nth-child(2){background:#febc2e;} .dots i:nth-child(3){background:#28c840;}
+  .chrome-title{font-size:22px; color:var(--sub); letter-spacing:.08em;}
+  .chrome-btns{margin-left:auto; display:flex; gap:28px; color:var(--dim); font-size:24px;}
+  .body{padding:30px 32px 26px; display:flex; flex-direction:column; flex:1;}
+  .status{display:flex; align-items:center; gap:14px; margin-bottom:8px;}
+  .pulse{width:18px; height:18px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 6px rgba(61,220,132,.16), 0 0 18px rgba(61,220,132,.55);}
+  .state{font-size:24px; font-weight:600;}
+  .meta{margin-left:auto; font-size:18px; color:var(--dim);}
+  .brand{font-size:40px; font-weight:700; letter-spacing:.01em; margin-top:6px;}
+  .url{font-size:18px; color:var(--sub); margin-top:10px; display:flex; align-items:center; gap:16px;}
+  .copy{font-size:15px; color:var(--accent-hi); border:1px solid rgba(109,134,255,.45); border-radius:9px; padding:5px 12px;}
+  .primary{
+    margin-top:26px; height:76px; border:0; border-radius:16px; cursor:pointer;
+    background:linear-gradient(180deg,var(--accent-hi),var(--accent));
+    color:#fff; font-size:28px; font-weight:700; font-family:inherit;
+    box-shadow:0 10px 26px rgba(77,107,254,.35), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .actions{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:16px;}
+  .actions button{
+    height:54px; border-radius:12px; border:1px solid var(--border); background:var(--layer);
+    color:var(--text); font-size:18px; font-family:inherit; cursor:pointer;
+  }
+  .foot{margin-top:auto; display:flex; justify-content:space-between; font-size:16px; color:var(--dim); padding-top:14px;}
+  .lastlog{
+    margin-top:18px; border:1px solid var(--border); border-radius:12px; background:rgba(0,0,0,.32);
+    padding:13px 18px; font-family:"Cascadia Mono",Consolas,monospace; font-size:14px; line-height:1.75;
+    color:#98a1b2; white-space:nowrap; overflow:hidden;
+  }
+  .lastlog b{color:var(--ok); font-weight:600;} .lastlog span{color:#5f6573;}
+</style>
+</head>
+<body>
+  <div class="win">
+    <div class="chrome">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="chrome-title">DSH LAUNCHER</div>
+      <div class="chrome-btns"><span>—</span><span>✕</span></div>
+    </div>
+    <div class="body">
+      <div class="status">
+        <span class="pulse"></span>
+        <span class="state">稼働中</span>
+        <span class="meta">PID 55832 · :3080 · 3時間12分</span>
+      </div>
+      <div class="brand">DeepSeek Harness</div>
+      <div class="url">https://nzxt.tail34c6a3.ts.net/ <span class="copy">URLをコピー</span></div>
+      <button class="primary">再起動</button>
+      <div class="actions">
+        <button>起動</button>
+        <button>停止</button>
+        <button>ブラウザ</button>
+        <button>ログ</button>
+      </div>
+      <div class="lastlog"><span>00:31:05</span>  tailscale url ready: <b>nzxt.tail34c6a3.ts.net</b></div>
+      <div class="foot"><span>プロファイル　web ▾</span><span>トレイ常駐中</span></div>
+    </div>
+  </div>
+</body>
+</html>

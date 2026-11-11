@@ -1,0 +1,11 @@
+# .NET build output
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+.vs/
+
+# Local logs
+*.log
+
+# dist/ is tracked on purpose: it holds the shipped single-file exe (`dist/dshl.exe`).

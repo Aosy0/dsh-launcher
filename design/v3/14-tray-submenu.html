@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>DSH Launcher — v3 C tray with many machines</title>
+<style>
+  :root{
+    --deep:#0f0f10; --page:#141415; --card:#19191b; --raised:#232325;
+    --text:#ededed; --sec:#a1a1a6; --muted:#85858b;
+    --line:rgba(237,237,237,.08); --line2:rgba(237,237,237,.14);
+    --pos:#4cc38a; --attn:#d9a441;
+    --mono:"Cascadia Mono","Consolas",monospace;
+    --sans:"Segoe UI Variable Text","Segoe UI","Yu Gothic UI","Meiryo",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:760px;height:440px;overflow:hidden}
+  body{background:#0b0b0c;color:var(--text);font-family:var(--sans);font-size:13px;-webkit-font-smoothing:antialiased;position:relative}
+  .cap{position:absolute;font-size:11px;color:#6f6f75}
+  .lamp{width:7px;height:7px;border-radius:50%;flex:none;background:#5a5a60}
+  .lamp.on{background:var(--pos)} .lamp.attn{background:var(--attn)}
+  svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .svg12{width:12px;height:12px}
+  .menu{position:absolute;left:56px;top:44px;width:248px;background:var(--card);border:1px solid var(--line2);border-radius:9px;box-shadow:0 14px 34px rgba(0,0,0,.55);padding:4px}
+  .mhead{padding:8px 8px 10px;border-bottom:1px solid var(--line);margin-bottom:4px}
+  .mhead .t{font-size:12.5px;font-weight:500}
+  .mhead .s{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+  .mi{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:6px;color:var(--sec);font-size:12px}
+  .mi .meta{margin-left:auto;font-size:10.5px;font-family:var(--mono);color:var(--muted);display:flex;align-items:center;gap:5px}
+  .mi .key{font-size:10px;color:var(--muted);border:1px solid var(--line2);border-radius:3px;padding:1px 3px}
+  .mi.hover{background:var(--raised);color:var(--text);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+  .mi.danger{color:#c9a8a8}
+  .sep{height:1px;background:var(--line);margin:4px 6px}
+  .sub{position:absolute;left:308px;top:96px;width:216px;background:var(--card);border:1px solid var(--line2);border-radius:9px;box-shadow:0 14px 34px rgba(0,0,0,.55);padding:4px}
+  .sub .mhead{padding-bottom:8px}
+  .sub .mi{height:28px}
+  .note{position:absolute;left:56px;top:378px;width:660px;font-size:11px;color:#6f6f75;line-height:1.7}
+</style>
+</head>
+<body>
+  <div class="cap" style="left:56px; top:24px">トレイメニュー（マシン数が増えても崩れない形）</div>
+  <div class="cap" style="left:308px; top:76px">マシン別サブメニュー</div>
+
+  <div class="menu">
+    <div class="mhead">
+      <div class="t">DeepSeek Harness</div>
+      <div class="s"><span class="lamp on"></span>8 台中 2 台稼働 · 3 台要対応</div>
+    </div>
+    <div class="mi hover"><span class="lamp on"></span>このPC<span class="meta">3:12:04<svg class="svg12" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span></div>
+    <div class="mi"><span class="lamp on"></span>mac-mini<span class="meta">1:04:11<svg class="svg12" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span></div>
+    <div class="mi"><span class="lamp attn"></span>minipc-server<span class="meta">要設定<svg class="svg12" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span></div>
+    <div class="sep"></div>
+    <div class="mi">すべてのマシン…<span class="meta">8</span></div>
+    <div class="mi">稼働中をまとめて再起動…</div>
+    <div class="sep"></div>
+    <div class="mi">ログ</div>
+    <div class="mi">設定</div>
+    <div class="sep"></div>
+    <div class="mi danger">終了</div>
+  </div>
+
+  <div class="sub">
+    <div class="mhead">
+      <div class="t">このPC</div>
+      <div class="s"><span class="lamp on"></span>稼働中 · 3:12:04 · :3080</div>
+    </div>
+    <div class="mi">ブラウザで開く<span class="meta"><span class="key">↵</span></span></div>
+    <div class="mi">再起動</div>
+    <div class="mi">停止</div>
+    <div class="sep"></div>
+    <div class="mi">ログを開く</div>
+    <div class="mi">詳細（一覧を開く）</div>
+  </div>
+
+  <div class="note">トレイには「稼働中＋直近に使ったマシン」だけを出し、残りは「すべてのマシン…」から一覧（480×348）で扱います。一覧側は状態でグループ化し、8 台を超えると絞り込み欄を出します。</div>
+</body>
+</html>
+

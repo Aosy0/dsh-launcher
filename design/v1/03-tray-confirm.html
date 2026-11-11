@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>DSH Launcher — 03 tray and confirm</title>
+<style>
+  :root{
+    --deep:#0f0f10; --page:#141415; --card:#19191b; --raised:#232325;
+    --text:#ededed; --sec:#a1a1a6; --muted:#85858b;
+    --line:rgba(237,237,237,.08); --line2:rgba(237,237,237,.14);
+    --pos:#4cc38a; --attn:#d9a441; --neg:#e5484d;
+    --mono:"Cascadia Mono","Consolas",monospace;
+    --sans:"Segoe UI Variable Text","Segoe UI","Yu Gothic UI","Meiryo",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1040px;height:560px;overflow:hidden}
+  body{background:#0b0b0c;color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;position:relative}
+  .cap{position:absolute;font-size:11.5px;color:#6f6f75;letter-spacing:.02em}
+  .lamp{width:8px;height:8px;border-radius:50%;flex:none;background:var(--muted)}
+  .lamp.on{background:var(--pos)} .lamp.attn{background:var(--attn)} .lamp.off{background:#5a5a60}
+  svg{width:16px;height:16px;stroke:currentColor;stroke-width:1.5;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .svg14{width:14px;height:14px}
+  /* tray menu */
+  .menu{position:absolute;left:64px;top:48px;width:264px;background:var(--card);border:1px solid var(--line2);border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,.55);padding:6px}
+  .mhead{padding:10px 10px 12px;border-bottom:1px solid var(--line);margin-bottom:6px}
+  .mhead .t{font-size:13px;font-weight:500}
+  .mhead .s{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:5px;font-family:var(--mono)}
+  .mi{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:7px;color:var(--sec);font-size:13px}
+  .mi .meta{margin-left:auto;font-size:11px;font-family:var(--mono);color:var(--muted);display:flex;align-items:center;gap:6px}
+  .mi.hover{background:var(--raised);color:var(--text);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+  .mi.danger{color:#c9a8a8}
+  .sep{height:1px;background:var(--line);margin:6px 8px}
+  /* dialog */
+  .dlg{position:absolute;left:392px;top:128px;width:460px;background:var(--card);border:1px solid var(--line2);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.6);overflow:hidden}
+  .dhead{display:flex;align-items:center;gap:10px;padding:18px 20px 0}
+  .dhead .lamp{width:9px;height:9px}
+  .dtitle{font-size:15px;font-weight:500;letter-spacing:-.01em}
+  .dbody{padding:10px 20px 16px;color:var(--sec);font-size:13px;line-height:1.75}
+  .fields{margin:0 20px 16px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .frow{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+  .frow:last-child{border-bottom:0}
+  .frow .lbl{color:var(--muted);width:104px;flex:none;font-size:11.5px}
+  .frow .val{font-family:var(--mono);font-size:12.5px;color:var(--text);font-variant-numeric:tabular-nums}
+  .frow .val.muted{color:var(--muted)}
+  .actions{display:flex;justify-content:flex-end;gap:8px;padding:0 20px 18px}
+  .btn{height:32px;padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:var(--raised);color:var(--text);font-size:13px;font-family:inherit;display:inline-flex;align-items:center;gap:8px}
+  .btn.primary{background:var(--text);border-color:var(--text);color:#141415;font-weight:500}
+  .note{position:absolute;left:392px;top:452px;width:540px;font-size:11.5px;color:#6f6f75;line-height:1.7}
+</style>
+</head>
+<body>
+  <div class="cap" style="left:64px; top:26px">トレイメニュー</div>
+  <div class="cap" style="left:392px; top:106px">再起動の確認</div>
+
+  <div class="menu">
+    <div class="mhead">
+      <div class="t">DeepSeek Harness</div>
+      <div class="s"><span class="lamp on"></span>このPC 稼働中 · 2 台が未設定</div>
+    </div>
+    <div class="mi hover"><span class="lamp on"></span>このPC<span class="meta">3:12:04<svg class="svg14" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span></div>
+    <div class="mi"><span class="lamp attn"></span>minipc-server<span class="meta">要設定<svg class="svg14" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span></div>
+    <div class="mi"><span class="lamp attn"></span>cpswhitegtx1080ti<span class="meta">要設定<svg class="svg14" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span></div>
+    <div class="sep"></div>
+    <div class="mi">稼働中のものを再起動…</div>
+    <div class="mi">ログを開く</div>
+    <div class="mi">設定</div>
+    <div class="sep"></div>
+    <div class="mi danger">終了</div>
+  </div>
+
+  <div class="dlg">
+    <div class="dhead"><span class="lamp on"></span><div class="dtitle">このPC を再起動しますか</div></div>
+    <div class="dbody">実行中のセッションは中断され、ページは再接続します。停止から起動まで最大 90 秒かかります。</div>
+    <div class="fields">
+      <div class="frow"><span class="lbl">対象</span><span class="val">このPC · web</span></div>
+      <div class="frow"><span class="lbl">実行するコマンド</span><span class="val">dsh web --profile web --port 3080</span></div>
+      <div class="frow"><span class="lbl">現在の状態</span><span class="val muted">稼働中 · PID 55832</span></div>
+    </div>
+    <div class="actions">
+      <button class="btn">キャンセル</button>
+      <button class="btn primary">再起動</button>
+    </div>
+  </div>
+
+  <div class="note">停止はポート 3080 を持つプロセスツリーを終了し、起動は同じコマンドを新しいプロセスとして実行します。コマンドは実行前にここで確認できます。</div>
+</body>
+</html>
+
