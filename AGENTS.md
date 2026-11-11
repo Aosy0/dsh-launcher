@@ -10,6 +10,9 @@ Windows 用の dsh（DeepSeek Harness）ランチャー。WPF/.NET 9 アプリ�
 - **リリース**: 配布物は GitHub Actions（`.github/workflows/release.yml`）が `v*` タグ push で作る。
   タグ `vX.Y.Z` は csproj の `<Version>` と一致させる（不一致はワークフローが失敗）。手順は
   docs/DEVELOPMENT.md「リリース」。アイコンは `src/DshLauncher/app.ico`（`python tools/make-icon.py` で生成、直接編集しない）。
+- **名称とライセンス**: 本プロジェクトは **MIT**。非公式ツールであることを README と Release 本文に明記する。
+  プロジェクト名は「DSH」、フルネーム「DeepSeek Harness」は互換性の説明にのみ使う
+  （上流 https://github.com/deepseek-ai/deepseek-harness/blob/master/BRAND_GUIDELINES.md に従う）。
 - **置き換え前**: 実行中の `dshl` は `dist\dshl.exe` をロックする。プロセスを停止してから publish。
 - **dsh の起動方式**: タスクスケジューラ＋`wscript` の非表示ランチャーを維持する。
   アプリや SSH から `dsh web` を直接起動すると、CLI のパイプ待ちや SSH セッション終了で落ちる。

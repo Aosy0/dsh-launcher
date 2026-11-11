@@ -82,4 +82,16 @@ jobs:
             --title "${{ github.ref_name }}" `
             --generate-notes
 
+      - name: Prepend unofficial-tool header
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $header = Get-Content .github/release-header.md -Raw
+          $generated = gh release view $tag --json body --jq '.body'
+          $body = $header + "`n`n" + $generated
+          $body | Set-Content -Path release-body.md -Encoding utf8
+          gh release edit $tag --notes-file release-body.md
+
 

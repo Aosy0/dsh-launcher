@@ -3,6 +3,10 @@
 DeepSeek Harness（dsh）を、このPCとリモートマシンで起動・再起動・停止・状態確認するための
 Windows デスクトップアプリ（WPF / .NET 9）＋ CLI（`dshl`）。同じ exe が GUI と CLI を兼ねる。
 
+> 非公式のサードパーティ製ランチャーです。DeepSeek 公式の製品ではなく、DeepSeek による承認・提携・サポートはありません。
+> 「DeepSeek Harness」は DeepSeek の登録商標で、本プロジェクトでは互換性の説明にのみ使用しています。
+> 詳細は [ライセンスと非公式について](#ライセンスと非公式について)。
+
 ![actual UI](design/v3/24-gui-pwa.png)
 
 ## インストール
@@ -225,6 +229,17 @@ dsh-launcher/
 ```
 
 リリースの作り方・配布物のビルドは [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) を参照。
+
+## ライセンスと非公式について
+
+- **ライセンス**: [MIT](LICENSE)（Copyright (c) 2026 Aosy）。商用利用・改変・再配布可、無保証。
+- **非公式**: 本プロジェクトはサードパーティ製で、DeepSeek 公式ではありません。DeepSeek による承認・提携・サポートはありません。
+- **名称**: 上流の [ブランドガイドライン](https://github.com/deepseek-ai/deepseek-harness/blob/master/BRAND_GUIDELINES.md) に従い、
+  プロジェクト名には略称 **DSH** を使用し、フルネーム「DeepSeek Harness」は互換性の説明にのみ使用します。
+  「DeepSeek Harness」は DeepSeek の登録商標です。公式ロゴ・ブランド素材は使用していません（アイコンは本プロジェクトの自作）。
+- **上流**: DeepSeek Harness（`dsh`）は [MIT](https://github.com/deepseek-ai/deepseek-harness/blob/master/LICENSE) で公開されています。
+  本ランチャーは `dsh` のコードを同梱・改変せず、CLI の起動と Web UI / PWA を開くだけです。
+- **開発者プレビュー**: DSH は developer preview で互換性が壊れる変更があります。本ランチャーの追従・動作は保証しません。
 
 ## 実測メモ
 

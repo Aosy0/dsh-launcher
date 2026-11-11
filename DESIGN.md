@@ -238,6 +238,9 @@ v1 への指摘「機能に対してウィンドウが贅沢（リッチすぎ�
   未インストール時は案内のみ（5.7）
 - 配布: GitHub Releases（自己完結 exe を推奨 ＋ framework-dependent 軽量版、`install.ps1`、SHA256SUMS）。
   `v*` タグ push で Actions がビルドして Release を作成する（12）
+- ライセンス: **MIT**。非公式ツールであることを README と Release 本文に明記し、上流の
+  [ブランドガイドライン](https://github.com/deepseek-ai/deepseek-harness/blob/master/BRAND_GUIDELINES.md) に従う
+  （プロジェクト名は「DSH」、フルネーム「DeepSeek Harness」は互換性の説明にのみ使用）。
 
 ## 10. 決定済み: 画面構成 = A + C ハイブリッド
 

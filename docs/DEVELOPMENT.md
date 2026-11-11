@@ -59,6 +59,8 @@ dotnet publish -c Release -r win-x64 --self-contained false `
    - `install.ps1` と `SHA256SUMS.txt`
    を添付した Release を作成（`gh release create --generate-notes`）
    インストール先には `install.ps1` / `update.cmd` / `uninstall.cmd` が置かれ、実行ポリシーに関係なく更新・削除できる
+7. Release 本文の先頭には `.github/release-header.md`（非公式の断り書き＋インストール1行）が自動で前置される
+   （workflow の「Prepend unofficial-tool header」）
 6. 確認: `gh run list --workflow release.yml` / `gh release view v0.1.10` /
    インストール動作は `.\install.ps1 -Version v0.1.10 -InstallDir $env:TEMP\dshl-test -NoShortcut` で確認できる
 
