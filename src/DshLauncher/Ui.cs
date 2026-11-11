@@ -134,6 +134,8 @@ internal static class UiKit
         var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
         presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
         presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        // The template ignores Button.Padding, so wide labels need their own breathing room.
+        presenter.SetValue(FrameworkElement.MarginProperty, new Thickness(14, 0, 14, 0));
         border.AppendChild(presenter);
 
         var template = new ControlTemplate(typeof(System.Windows.Controls.Button)) { VisualTree = border };
@@ -347,8 +349,8 @@ internal sealed class MainWindow : Window
         grid.Children.Add(add);
         var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         // The PWA belongs to this PC, not to a machine row: keep it a single, always-visible action.
-        right.Children.Add(UiKit.Button("PWA を開く", true, OpenPwa, 24, 11));
-        right.Children.Add(new Border { Width = 14 });
+        right.Children.Add(UiKit.Button("PWA を開く", true, OpenPwa, 28, 11.5));
+        right.Children.Add(new Border { Width = 16 });
         right.Children.Add(UiKit.Quiet("ログ", () => ShowLogs(Selected())));
         right.Children.Add(new Border { Width = 12 });
         right.Children.Add(UiKit.Quiet("設定", OpenConfig));
@@ -356,7 +358,7 @@ internal sealed class MainWindow : Window
         grid.Children.Add(right);
         return new Border
         {
-            Padding = new Thickness(10, 7, 10, 7),
+            Padding = new Thickness(10, 6, 10, 6),
             BorderBrush = Theme.Line,
             BorderThickness = new Thickness(0, 1, 0, 0),
             Child = grid,
@@ -768,34 +770,35 @@ internal sealed class MainWindow : Window
         catch (Exception error) { ConfirmWindow.Info(this, machine.DisplayName, error.Message); }
     }
 
-    /// <summary>Open this PC's DSH as its installed Brave PWA; it is not tied to the selected machine.</summary>
+    /// <summary>Open this PC's DSH as its installed browser web app (PWA); it is not tied to a machine row.</summary>
     private void OpenPwa()
     {
         var local = _config.LocalMachine;
-        var app = BraveApps.Find(local);
+        var app = BrowserApps.Find(local);
         if (app is null)
         {
             ExplainMissingPwa(local);
             return;
         }
-        var (ok, message) = BraveApps.Launch(app);
+        var (ok, message) = BrowserApps.Launch(app);
         if (!ok) ConfirmWindow.Info(this, "PWA を開く", message);
     }
 
-    /// <summary>Tell the user how to install the PWA, and open Brave so they can do it now.</summary>
+    /// <summary>Tell the user how to install the web app, and open the URL in the default browser.</summary>
     internal void ExplainMissingPwa(Machine local)
     {
-        if (BraveApps.Installations().Count == 0)
+        if (BrowserApps.Installations().Count == 0)
         {
-            ConfirmWindow.Info(this, "PWA を開く", "Brave が見つかりません。Brave をインストールし、DSH の画面からアプリとして追加してください。");
+            ConfirmWindow.Info(this, "PWA を開く",
+                "PWA に対応したブラウザが見つかりません。Chromium 系のブラウザをインストールし、DSH の画面から「アプリとしてインストール」で追加してください。");
             return;
         }
         var proceed = ConfirmWindow.Ask(this, "PWA が見つかりません",
-            "このPCの DSH は Brave の PWA としてインストールされていません。Brave でこの URL を開き、アドレスバー右のインストールアイコン（または ⋮ メニューの「アプリとしてインストール」）で追加すると、ここから直接開けます。",
-            local.TargetUrl, "Brave で開く", "閉じる");
+            "このPCの DSH はブラウザの PWA（アプリ）としてインストールされていません。お使いのブラウザでこの URL を開き、「アプリとしてインストール」（または「アプリをインストール」）で追加すると、ここから直接開けます。",
+            local.TargetUrl, "ブラウザで開く", "閉じる");
         if (!proceed) return;
-        var (ok, message) = BraveApps.OpenInBrave(local.TargetUrl);
-        if (!ok) ConfirmWindow.Info(this, "Brave", message);
+        var (ok, message) = BrowserApps.OpenInBrowser(local.TargetUrl);
+        if (!ok) ConfirmWindow.Info(this, "PWA を開く", message);
     }
 
     private void OpenConfig()
@@ -922,13 +925,13 @@ internal sealed class TrayIcon : IDisposable
     private void OpenPwa()
     {
         var local = _window.Config.LocalMachine;
-        var app = BraveApps.Find(local);
+        var app = BrowserApps.Find(local);
         if (app is null)
         {
             _window.Dispatcher.Invoke(() => _window.ExplainMissingPwa(local));
             return;
         }
-        var (ok, message) = BraveApps.Launch(app);
+        var (ok, message) = BrowserApps.Launch(app);
         if (!ok) _window.Dispatcher.Invoke(() => ConfirmWindow.Info(_window, "PWA を開く", message));
     }
 

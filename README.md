@@ -42,7 +42,7 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 |---|---|
 | このPCの DSH を起動 / 停止 | Node.js 24.9 以上と dsh（`npm i -g @deepseek-ai/dsh`） |
 | リモートの DSH を操作 | `~/.ssh/config` のホストエイリアス（鍵認証） |
-| PWA を開く | Brave と、DSH の PWA（Brave で DSH を開き「アプリとしてインストール」） |
+| PWA を開く | PWA に対応した Chromium 系ブラウザ（Chrome / Edge / Brave など）と、DSH をそのブラウザで「アプリとしてインストール」したもの |
 
 ## はじめかた
 
@@ -50,7 +50,8 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
    `~/.ssh/config` のホストを一覧へ自動で追加する（プロファイル名・ポート・URL は「設定」で編集）。
 2. このPCの行の「起動」で DSH を起動する（タスクスケジューラ経由なので、ランチャーを閉じても残る）。
 3. リモートが「要セットアップ」なら「DSH をセットアップ」で Node と dsh を導入する。
-4. ボトムバー / トレイの「PWA を開く」で DSH の Brave アプリを開ける。
+4. ボトムバー / トレイの「PWA を開く」で、DSH をインストール済みブラウザの Web アプリ（PWA）として開ける。
+   未インストールなら、ブラウザで開いて追加する手順を案内する。
 5. コマンドラインは同じ exe:
 
    ```powershell
@@ -65,7 +66,7 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | 設計・デザイン・決定事項 | [DESIGN.md](DESIGN.md) |
 | 開発・構成・障害対応 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 
-## 実装状況（v0.1.12 / 2026-11-11）
+## 実装状況（v0.1.13 / 2026-11-12）
 
 | 機能 | 状態 |
 |---|---|
@@ -81,9 +82,22 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | リモート: DSH の自動セットアップ（Node 24.9+ と dsh） | ✅ 実機確認（minipc-server: Node v24.13.0 / dsh 0.2.2-rc.1） |
 | ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 |
 | マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 |
-| PWA を開く（Brave アプリ、マシン非依存） | ✅ 実装・実機確認（DeepSeek Harness / Profile 5） |
+| PWA を開く（ブラウザの Web アプリ、マシン非依存） | ✅ 実装・実機確認（Chrome / Edge / Brave の Web アプリ検出） |
 | 配布（GitHub Releases / install.ps1 / アイコン） | ✅ v0.1.10 から |
 | URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 |
+
+## 修正履歴（v0.1.13）
+
+- 「Brave」前提だった表記を**「ブラウザ」に統一**し、PWA（Web アプリ）を
+  **Chrome / Edge / Brave / Chromium** から自動検出して起動できるようにした。
+  - 検出は各ブラウザの `<User Data>\<Profile>\Web Applications\_crx_<id>`（Edge は `_crx__<id>`）。
+    起動はブラウザ同梱の `chrome_proxy.exe` / `msedge_proxy.exe` に `--profile-directory` と `--app-id` を渡す。
+  - Firefox など Web アプリをインストールできないブラウザは対象外（UI 上は特定ブラウザ名を出さない）。
+  - 未インストール時の案内: 「ブラウザで開く」で既定のブラウザに URL を開く。
+- ボトムバーの「PWA を開く」ボタンの**内側の余白が狭い**問題を修正。ボタンのテンプレートが `Padding` を
+  使っておらず、幅の広いラベル（PWA を開く / セットアップ / ブラウザで開く）で文字が端に寄っていた。
+  テンプレートに左右 14px の余白を追加し、高さも他の主ボタンと同じ 28px に揃えた。
+- CLI: `dshl pwa --json` に `browser`（起動に使うブラウザ）と `browsers`（検出したブラウザ一覧）を追加。
 
 ## 修正履歴（v0.1.12）
 
@@ -121,7 +135,8 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 
 ## 修正履歴（v0.1.8）
 
-- ローカル DSH の PWA（Brave アプリ）検出と起動を追加（v0.1.9 で導線をマシン非依存に変更）。
+- ローカル DSH の PWA（ブラウザの Web アプリ）検出と起動を追加
+  （v0.1.9 で導線をマシン非依存に、v0.1.13 で Chromium 系ブラウザ一般に拡張）。
   - Brave の Web アプリは `chrome_proxy.exe --profile-directory="Profile N" --app-id=<id>` で起動する
     （Start Menu の `Brave Apps` ショートカットと同じ行）。
   - app id は **Web App Manifest の id を二重 SHA-256** した Chromium の a–p 記法。DSH は manifest に `id` が無く
@@ -195,7 +210,8 @@ dshl gui
 ```
 
 - **PWA を開く**: ボトムバー右の「PWA を開く」、または `dshl pwa --open`。
-  Brave の PWA（このPCの DSH）を独立ウィンドウで開く。未インストールならインストール手順を案内する。
+  ブラウザの Web アプリ（このPCの DSH）を独立ウィンドウで開く。未インストールならインストール手順を案内する。
+  `dshl pwa --json` で、起動に使うブラウザ（`browser`）と検出したブラウザ一覧（`browsers`）を確認できる。
 
 - 設定: `%APPDATA%\DshLauncher\hosts.json`（秘密情報なし。SSH は `~/.ssh/config` のエイリアスを使用）
 - ローカル起動は **タスクスケジューラ経由**（`DshLauncher\start-<id>`）。サーバーがランチャーの
@@ -221,7 +237,7 @@ dsh-launcher/
 │  ├─ Model.cs            # 設定・状態・ポート検出
 │  ├─ Local.cs            # ローカル起動/停止/状態（タスクスケジューラ起動）
 │  ├─ Remote.cs           # SSH・リモート検出/操作・ヘルパースクリプト
-│  ├─ BraveApp.cs         # Brave アプリ（PWA）の検出と起動（app id 算出・プロファイル走査）
+│  ├─ BrowserApp.cs        # ブラウザの Web アプリ（PWA）の検出と起動（app id 算出・プロファイル走査）
 │  ├─ Cli.cs              # dshl サブコマンド
 │  ├─ Ui.cs               # 一覧ウィンドウ・トレイ・テーマ
 │  └─ Dialogs.cs          # 確認・名前変更・マシン追加・ログ

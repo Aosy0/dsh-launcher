@@ -21,7 +21,7 @@ dsh-launcher/
 │  ├─ Model.cs               # hosts.json、MachineStatus、ポート検出（netstat）
 │  ├─ Local.cs               # ローカル起動/停止/状態（タスクスケジューラ起動）
 │  ├─ Remote.cs              # SSH、リモート検出/操作、agent.sh / agent.ps1
-│  ├─ BraveApp.cs            # Brave アプリ（PWA）検出・起動（app id 算出、プロファイル走査）
+│  ├─ BrowserApp.cs          # ブラウザの Web アプリ（PWA）検出・起動（app id 算出、プロファイル走査）
 │  ├─ Setup.cs               # RemoteSetup/SetupScripts（Node+dsh 導入）、Ps1Encoding(BOM)
 │  ├─ Cli.cs                 # dshl サブコマンド、MachineOps
 │  ├─ Ui.cs                  # 一覧ウィンドウ・トレイ・テーマ・LoadingBar
@@ -99,16 +99,19 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 9. **ダイアログ**: ウィンドウ全体の `DragMove()` はマウスをキャプチャしてボタンを飲む。
    非インタラクティブ領域だけドラッグ。ボタンは必ず実 `Button`（ControlTemplate 付き）。
 10. **バージョン**: `<Version>` を上げる。UI 右下と `dshl --version` はアセンブリから取得。
-11. **PWA を開くはマシン非依存**（`BraveApp.cs`）:
+11. **PWA を開くはマシン非依存**（`BrowserApp.cs`）:
     - 配置はボトムバー右の主ボタンとトレイ最上位。行メニュー・マシン別サブメニューには出さない
-      （PWA は 1 オリジン＝このPCの DSH に属し、マシン行の操作ではない）。
+      （Web アプリは 1 オリジン＝このPCの DSH に属し、マシン行の操作ではない）。
+    - 対象は Chromium 系（Chrome / Edge / Brave / Chromium。Brave は Beta/Dev/Nightly も）。
+      ユーザー向け文言は特定ブラウザ名を出さず「ブラウザ」に統一する。
     - app id = `GenerateId(SHA256(manifest id))` = **二重 SHA-256**（先頭16バイトを a–p へ）。
       DSH の manifest は `start_url: "./"` なので manifest id は URL のディレクトリ（既定 `http://host:port/`）。
-    - 判定は `Web Applications\_crx_<id>` / `Manifest Resources\<id>` の実フォルダのみ。
-      `.lnk` 解析・レジストリのアプリ登録・Brave 内部 DB は使わない（壊れやすい）。
-    - 起動は Start Menu と同じ `chrome_proxy.exe --profile-directory="Profile N" --app-id=<id>`。
+    - 判定は各ブラウザの `<User Data>\<Profile>\Web Applications\_crx_<id>`（Edge は `_crx__<id>`）/
+      `Manifest Resources\<id>` の実フォルダのみ。`.lnk` 解析・ブラウザ内部 DB は使わない（壊れやすい）。
+    - 起動はブラウザ同梱の proxy（`chrome_proxy.exe` / `msedge_proxy.exe`）に
+      `--profile-directory="Profile N" --app-id=<id>`。無ければブラウザ exe。
     - ローカル DSH は `127.0.0.1` / `localhost` の両表記を試す。
-    - 検出結果は `dshl pwa --json` / `dshl pwa --dry-run` で確認できる。
+    - 検出結果は `dshl pwa --json`（`browser` / `browsers`） / `dshl pwa --dry-run` で確認できる。
 
 ## テスト手順（本番 3080 を触らない）
 
@@ -126,7 +129,8 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 5. ウィンドウ画像は `PrintWindow(hwnd, hdc, 2)` で取得（画面キャプチャより確実）
 6. PWA の検出・起動:
    - `dshl pwa` が `DeepSeek Harness  <appId>  Profile N  <url>` と実行行を出す
-   - `dshl pwa --dry-run` が `chrome_proxy.exe --profile-directory=... --app-id=...` を返す
+   - `dshl pwa --json` で `browser`（起動に使うブラウザ）と `browsers`（検出したブラウザ一覧）を確認できる
+   - `dshl pwa --dry-run` が `<browser proxy> --profile-directory=... --app-id=...` を返す
    - GUI のボトムバー「PWA を開く」を `InvokePattern` で押すと既存のアプリウィンドウへフォーカス
      （重複ウィンドウは作られない）。未インストールなら案内ダイアログ
 
@@ -140,7 +144,7 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 | リモートで「dsh が見つかりません」 | PATH 構築（nvm/ポータブル）と `.cmd` 優先を確認。`agent.sh/ps1` を再配置 |
 | セットアップ失敗 | `logs\<id>-setup.log` を確認。Node 24.9+ / npm 到達性 / BOM |
 | タスクが Running のまま残る | 旧ビルド（cmd 直接起動）の残り。停止/再起動で掃除される |
-| 「PWA が見つかりません」 | `dshl pwa --json` で appId/profile を確認。Brave のプロファイル（`%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data\Profile N\Web Applications\_crx_<id>`）に実フォルダがあるか。ローカル DSH の URL（host/port）がインストール時と一致しているか |
+| 「PWA が見つかりません」 | `dshl pwa --json` で `browser` / `browsers` / appId / profile を確認。各ブラウザのプロファイル（例 Chrome: `%LOCALAPPDATA%\Google\Chrome\User Data\Profile N\Web Applications\_crx_<id>`、Edge は `_crx__<id>`）に実フォルダがあるか。ローカル DSH の URL（host/port）がインストール時と一致しているか |
 
 ## 既知の未対応
 

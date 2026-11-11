@@ -9,61 +9,59 @@ using Microsoft.Win32;
 
 namespace DshLauncher;
 
-/// <summary>A web app (PWA) installed in Brave, identified by its Chromium app id and profile.</summary>
-internal sealed class BraveAppInfo
+/// <summary>A web app (PWA) installed in a Chromium-based browser, identified by app id and profile.</summary>
+internal sealed class BrowserAppInfo
 {
     public string AppId { get; set; } = "";
     public string ProfileDirectory { get; set; } = "";
     public string? Name { get; set; }
     public string Executable { get; set; } = "";
+    public string Browser { get; set; } = "";
 
     /// <summary>The manifest id the app id was derived from (for diagnostics; not always known).</summary>
     public string? ManifestId { get; set; }
 
     public string Label => string.IsNullOrWhiteSpace(Name) ? AppId : Name!;
 
-    /// <summary>The same command line the Start Menu shortcut in "Brave Apps" uses.</summary>
+    /// <summary>The same command line the browser's app shortcut uses.</summary>
     public string CommandLine =>
         $"{Executable} --profile-directory=\"{ProfileDirectory}\" --app-id={AppId}";
 }
 
-internal sealed class BraveInstallation
+internal sealed class BrowserInstallation
 {
-    public string BraveExe { get; init; } = "";
-    public string ProxyExe { get; init; } = "";
+    public string Label { get; init; } = "";
+    public string BrowserExe { get; init; } = "";
+    public string LaunchExe { get; init; } = "";
     public List<string> UserDataDirs { get; init; } = new();
 }
 
 /// <summary>
-/// Opens this PC's DSH as the Brave web app (PWA) instead of a browser tab. This is a launcher-wide
-/// action (bottom bar / tray), not attached to a machine row: the installed app belongs to one origin.
+/// Opens this PC's DSH as an installed web app (PWA) in whichever Chromium-based browser has it.
+/// This is a launcher-wide action (bottom bar / tray), not attached to a machine row.
 ///
-/// A Chromium web app is launched as <c>&lt;chrome_proxy.exe&gt; --profile-directory="Profile N" --app-id=&lt;id&gt;</c>,
-/// which is exactly what the Start Menu shortcut under "Brave Apps" contains. The app id is derived from
-/// the web app manifest id, so no shortcut parsing is needed: dsh serves <c>/manifest.webmanifest</c> with
-/// <c>start_url: "./"</c>, which makes the id a hash of the page directory (the origin root by default).
+/// Chromium-family browsers store installed web apps as <c>&lt;User Data&gt;\&lt;Profile&gt;\Web Applications\_crx_&lt;id&gt;</c>
+/// and launch them with <c>&lt;browser proxy&gt; --profile-directory="Profile N" --app-id=&lt;id&gt;</c>.
+/// The app id is derived from the web app manifest id, so no shortcut parsing is needed: dsh serves
+/// <c>/manifest.webmanifest</c> with <c>start_url: "./"</c>, which makes the id a hash of the page directory.
+/// Supported browsers: Chrome / Edge / Brave / Chromium (Firefox-style browsers cannot install Web Apps).
 /// </summary>
-internal static class BraveApps
+internal static class BrowserApps
 {
-    private static readonly string[] Channels =
-    {
-        "Brave-Browser", "Brave-Browser-Beta", "Brave-Browser-Dev", "Brave-Browser-Nightly",
-    };
-
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(30);
     private static readonly object Gate = new();
-    private static readonly Dictionary<string, (BraveAppInfo? App, DateTime At)> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, (BrowserAppInfo? App, DateTime At)> Cache = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly object InstallGate = new();
-    private static List<BraveInstallation>? _installations;
+    private static List<BrowserInstallation>? _installations;
     private static bool _installationsChecked;
     private static DateTime _installationsAt;
 
-    /// <summary>The Brave app installed for this machine's URL, or null when there is none.</summary>
-    public static BraveAppInfo? Find(Machine machine)
+    /// <summary>The installed web app for this machine's URL, or null when there is none.</summary>
+    public static BrowserAppInfo? Find(Machine machine)
     {
         // An ssh machine without url falls back to 127.0.0.1 in Machine.TargetUrl, which would match
-        // this PC's PWA: never resolve a remote machine to the local app.
+        // this PC's app: never resolve a remote machine to the local one.
         if (machine.Kind == MachineKind.Ssh && string.IsNullOrWhiteSpace(machine.Url)) return null;
 
         var found = FindForUrl(machine.TargetUrl);
@@ -79,7 +77,7 @@ internal static class BraveApps
         return null;
     }
 
-    public static BraveAppInfo? FindForUrl(string url)
+    public static BrowserAppInfo? FindForUrl(string url)
     {
         var now = DateTime.UtcNow;
         lock (Gate)
@@ -87,7 +85,7 @@ internal static class BraveApps
             if (Cache.TryGetValue(url, out var cached) && now - cached.At < CacheLifetime) return cached.App;
         }
 
-        BraveAppInfo? result = null;
+        BrowserAppInfo? result = null;
         try { result = Detect(url); }
         catch { /* detection is best-effort */ }
 
@@ -95,7 +93,7 @@ internal static class BraveApps
         return result;
     }
 
-    private static BraveAppInfo? Detect(string url)
+    private static BrowserAppInfo? Detect(string url)
     {
         var installations = Installations();
         if (installations.Count == 0) return null;
@@ -130,22 +128,25 @@ internal static class BraveApps
         if (seen.Add(root)) yield return root;
     }
 
-    private static BraveAppInfo? ScanProfiles(BraveInstallation installation, string appId)
+    private static BrowserAppInfo? ScanProfiles(BrowserInstallation installation, string appId)
     {
         foreach (var userData in installation.UserDataDirs)
         {
             foreach (var profile in Profiles(userData))
             {
                 var webApps = Path.Combine(profile, "Web Applications");
-                var iconDir = Path.Combine(webApps, "_crx_" + appId);
+                // Edge names its app icon folder "_crx__<id>" (extra underscore), Chrome uses "_crx_<id>".
+                var iconDir = new[] { Path.Combine(webApps, "_crx_" + appId), Path.Combine(webApps, "_crx__" + appId) }
+                    .FirstOrDefault(Directory.Exists);
                 var manifestDir = Path.Combine(webApps, "Manifest Resources", appId);
-                if (!Directory.Exists(iconDir) && !Directory.Exists(manifestDir)) continue;
-                return new BraveAppInfo
+                if (iconDir is null && !Directory.Exists(manifestDir)) continue;
+                return new BrowserAppInfo
                 {
                     AppId = appId,
                     ProfileDirectory = Path.GetFileName(profile),
-                    Name = NameFor(iconDir),
-                    Executable = installation.ProxyExe,
+                    Name = iconDir is null ? null : NameFor(iconDir),
+                    Executable = installation.LaunchExe,
+                    Browser = installation.Label,
                 };
             }
         }
@@ -169,8 +170,8 @@ internal static class BraveApps
         return new string(chars);
     }
 
-    /// <summary>Launch the installed app. Launches are the same as clicking its Start Menu shortcut.</summary>
-    public static (bool Ok, string Message) Launch(BraveAppInfo app)
+    /// <summary>Launch the installed app: the same command line as the browser's app shortcut.</summary>
+    public static (bool Ok, string Message) Launch(BrowserAppInfo app)
     {
         try
         {
@@ -188,14 +189,12 @@ internal static class BraveApps
         }
     }
 
-    /// <summary>Open the URL as a normal Brave tab (used to install the app when it is missing).</summary>
-    public static (bool Ok, string Message) OpenInBrave(string url)
+    /// <summary>Open the URL in the default browser (install guidance when no app is installed).</summary>
+    public static (bool Ok, string Message) OpenInBrowser(string url)
     {
-        var installation = Installations().FirstOrDefault();
-        if (installation is null) return (false, "Brave が見つかりません");
         try
         {
-            Process.Start(new ProcessStartInfo(installation.BraveExe, url) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
             return (true, $"opened {url}");
         }
         catch (Exception error)
@@ -204,8 +203,8 @@ internal static class BraveApps
         }
     }
 
-    /// <summary>Every Brave install (stable, beta, dev, nightly) together with the user data dirs it owns.</summary>
-    public static List<BraveInstallation> Installations()
+    /// <summary>Chromium-based browsers installed on this PC, together with the user data dirs they own.</summary>
+    public static List<BrowserInstallation> Installations()
     {
         lock (InstallGate)
         {
@@ -218,33 +217,66 @@ internal static class BraveApps
         }
     }
 
-    private static List<BraveInstallation> FindInstallations()
+    private static List<BrowserInstallation> FindInstallations()
     {
-        var installations = new List<BraveInstallation>();
+        var installations = new List<BrowserInstallation>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-
-        foreach (var exe in BraveExecutables())
+        var roots = new[]
         {
-            var appDir = Path.GetDirectoryName(exe);
-            if (string.IsNullOrEmpty(appDir)) continue;
-            var channelDir = Path.GetDirectoryName(appDir);
-            if (string.IsNullOrEmpty(channelDir)) continue;
-            var channel = Path.GetFileName(channelDir);
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            local,
+        }.Where(root => !string.IsNullOrWhiteSpace(root)).ToArray();
 
-            // Profiles belong to the channel: the install owns <channel>\User Data, and the same
-            // channel directory under LocalAppData when the exe lives elsewhere.
-            var userDataDirs = new List<string>();
-            AddUserDataDir(userDataDirs, Path.GetFullPath(Path.Combine(channelDir, "User Data")));
-            AddUserDataDir(userDataDirs, Path.Combine(local, "BraveSoftware", channel, "User Data"));
+        void Add(string label, string[] registryNames, string installRelative, string userDataRelative, string[] proxyNames)
+        {
+            var candidates = new List<string>();
+            foreach (var name in registryNames) candidates.AddRange(RegistryCandidates(name));
+            foreach (var root in roots) candidates.Add(Path.Combine(root, installRelative));
 
-            var proxy = Path.Combine(appDir, "chrome_proxy.exe");
-            installations.Add(new BraveInstallation
+            foreach (var candidate in candidates)
             {
-                BraveExe = exe,
-                ProxyExe = File.Exists(proxy) ? proxy : exe,
-                UserDataDirs = userDataDirs,
-            });
+                string exe;
+                try { exe = Path.GetFullPath(candidate); } catch { continue; }
+                if (!File.Exists(exe) || !seen.Add(exe)) continue;
+
+                var appDir = Path.GetDirectoryName(exe);
+                if (string.IsNullOrEmpty(appDir)) continue;
+
+                var userDataDirs = new List<string>();
+                var channelDir = Path.GetDirectoryName(appDir);
+                if (!string.IsNullOrEmpty(channelDir)) AddUserDataDir(userDataDirs, Path.Combine(channelDir, "User Data"));
+                AddUserDataDir(userDataDirs, Path.Combine(local, userDataRelative));
+                if (userDataDirs.Count == 0) continue;
+
+                var launchExe = proxyNames
+                    .Select(proxy => Path.Combine(appDir, proxy))
+                    .FirstOrDefault(File.Exists) ?? exe;
+                installations.Add(new BrowserInstallation
+                {
+                    Label = label,
+                    BrowserExe = exe,
+                    LaunchExe = launchExe,
+                    UserDataDirs = userDataDirs,
+                });
+            }
         }
+
+        Add("Chrome", new[] { "chrome.exe" }, @"Google\Chrome\Application\chrome.exe", @"Google\Chrome\User Data", new[] { "chrome_proxy.exe" });
+        Add("Edge", new[] { "msedge.exe" }, @"Microsoft\Edge\Application\msedge.exe", @"Microsoft\Edge\User Data", new[] { "msedge_proxy.exe" });
+        Add("Chromium", new[] { "chrome.exe" }, @"Chromium\Application\chrome.exe", @"Chromium\User Data", new[] { "chrome_proxy.exe" });
+        foreach (var (label, channel) in new[]
+        {
+            ("Brave", "Brave-Browser"),
+            ("Brave Beta", "Brave-Browser-Beta"),
+            ("Brave Dev", "Brave-Browser-Dev"),
+            ("Brave Nightly", "Brave-Browser-Nightly"),
+        })
+        {
+            Add(label, new[] { "brave.exe" }, $@"BraveSoftware\{channel}\Application\brave.exe", $@"BraveSoftware\{channel}\User Data", new[] { "chrome_proxy.exe" });
+        }
+
         return installations;
     }
 
@@ -259,21 +291,7 @@ internal static class BraveApps
         catch { /* invalid path: skip */ }
     }
 
-    private static IEnumerable<string> BraveExecutables()
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var exe in RegistryCandidates().Concat(FileCandidates()))
-        {
-            if (string.IsNullOrWhiteSpace(exe)) continue;
-            string full;
-            try { full = Path.GetFullPath(exe); }
-            catch { continue; }
-            if (!File.Exists(full) || !seen.Add(full)) continue;
-            yield return full;
-        }
-    }
-
-    private static IEnumerable<string> RegistryCandidates()
+    private static IEnumerable<string> RegistryCandidates(string exeName)
     {
         var entries = new (RegistryHive Hive, RegistryView View)[]
         {
@@ -287,26 +305,11 @@ internal static class BraveApps
             try
             {
                 using var baseKey = RegistryKey.OpenBaseKey(hive, view);
-                using var key = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\brave.exe");
+                using var key = baseKey.OpenSubKey($@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{exeName}");
                 value = key?.GetValue(null) as string;
             }
             catch { /* registry is optional */ }
             if (!string.IsNullOrWhiteSpace(value)) yield return value.Trim('"');
-        }
-    }
-
-    private static IEnumerable<string> FileCandidates()
-    {
-        var roots = new List<string>
-        {
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        };
-        foreach (var root in roots.Where(root => !string.IsNullOrWhiteSpace(root)))
-        {
-            foreach (var channel in Channels)
-                yield return Path.Combine(root, "BraveSoftware", channel, "Application", "brave.exe");
         }
     }
 

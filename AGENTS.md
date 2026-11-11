@@ -22,10 +22,12 @@ Windows 用の dsh（DeepSeek Harness）ランチャー。WPF/.NET 9 アプリ�
   （`$ProfileName`）。dsh は `%APPDATA%\npm\dsh.cmd` を優先（`.ps1` シムは cmd.exe で実行不可）。
 - **UI**: 操作中（起動/再起動/停止/セットアップ）は一覧を再描画せず、経過テキストだけ更新する。
   再描画するとインジケータバーのアニメーションがリセットされる。
-- **PWA を開く（Brave アプリ）**: **マシン非依存**。ボトムバー右とトレイ最上位に置き、CLI は `dshl pwa --open`。
-  起動は `chrome_proxy.exe --profile-directory="Profile N" --app-id=<id>`（Start Menu と同じ行）。
-  app id は manifest id（DSH は `start_url: "./"` = URL のディレクトリ）の**二重 SHA-256** から算出する。
-  `.lnk` 解析・Brave 内部 DB は使わない。検出は `dshl pwa --json` で確認。
+- **PWA を開く（ブラウザの Web アプリ）**: **マシン非依存**。ボトムバー右とトレイ最上位に置き、CLI は `dshl pwa --open`。
+  対象は Chromium 系（Chrome / Edge / Brave / Chromium、Brave は Beta/Dev/Nightly も）。検出は各ブラウザの
+  `<User Data>\<Profile>\Web Applications\_crx_<id>`（Edge は `_crx__<id>`）、起動はブラウザ同梱の proxy
+  （`chrome_proxy.exe` / `msedge_proxy.exe`）に `--profile-directory` `--app-id`。app id は manifest id の
+  **二重 SHA-256**。`.lnk` 解析・ブラウザ内部 DB は使わない。検出は `dshl pwa --json`（`browser` / `browsers`）。
+  **ユーザー向け文言は特定ブラウザ名を出さず「ブラウザ」に統一**する。
 
 ## 詳細ドキュメント
 

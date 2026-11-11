@@ -360,34 +360,37 @@ internal static class Cli
         return 0;
     }
 
-    /// <summary>This PC's DSH as the installed Brave PWA: detection info, command receipt, or open.</summary>
+    /// <summary>This PC's DSH as an installed browser web app (PWA): detection info, command receipt, or open.</summary>
     private static int Pwa(LauncherConfig config, Options options)
     {
         var local = config.LocalMachine;
-        var app = BraveApps.Find(local);
+        var installations = BrowserApps.Installations();
+        var browsers = installations.Select(installation => installation.Label).ToArray();
+        var app = BrowserApps.Find(local);
 
         if (app is null)
         {
-            var braveFound = BraveApps.Installations().Count > 0;
-            var hint = braveFound
-                ? "Brave でこの URL を開き、アドレスバー右のインストールアイコンから追加します。"
-                : "Brave が見つかりません。インストールとプロファイルを確認します。";
+            var browserFound = installations.Count > 0;
+            var hint = browserFound
+                ? "ブラウザでこの URL を開き、「アプリとしてインストール」で追加します（Chromium 系のブラウザが必要です）。"
+                : "PWA に対応したブラウザが見つかりません。Chromium 系のブラウザをインストールしてください。";
             if (options.Json)
             {
                 Console.WriteLine(JsonSerializer.Serialize(new
                 {
                     machine = local.Id,
                     url = local.TargetUrl,
-                    braveFound,
+                    browserFound,
+                    browsers,
                     installed = false,
                     hint,
                 }, Json.Options));
             }
             else
             {
-                Console.WriteLine(braveFound
+                Console.WriteLine(browserFound
                     ? $"PWA はインストールされていません: {local.TargetUrl}"
-                    : "Brave が見つかりません");
+                    : "PWA に対応したブラウザが見つかりません");
                 Console.WriteLine($"hint: {hint}");
             }
             return 4;
@@ -411,6 +414,8 @@ internal static class Cli
                     installed = true,
                     appId = app.AppId,
                     name = app.Label,
+                    browser = app.Browser,
+                    browsers,
                     profile = app.ProfileDirectory,
                     command = app.CommandLine,
                 }, Json.Options));
@@ -423,7 +428,7 @@ internal static class Cli
             return 0;
         }
 
-        var (ok, message) = BraveApps.Launch(app);
+        var (ok, message) = BrowserApps.Launch(app);
         if (options.Json)
         {
             Console.WriteLine(JsonSerializer.Serialize(new
@@ -431,6 +436,7 @@ internal static class Cli
                 machine = local.Id,
                 appId = app.AppId,
                 name = app.Label,
+                browser = app.Browser,
                 profile = app.ProfileDirectory,
                 command = app.CommandLine,
                 ok,
@@ -486,8 +492,8 @@ usage:
   dshl open [machine] [--dry-run]
                                 open the URL in the default browser
   dshl pwa [--open] [--dry-run] [--json]
-                                this PC's DSH as the Brave PWA: info, or --open to
-                                launch it (--dry-run prints the command line)
+                                this PC's DSH as an installed browser web app (PWA):
+                                info, or --open to launch it (--dry-run prints the command line)
   dshl gui                      open the launcher window
   --config <path>               use a different hosts.json
 

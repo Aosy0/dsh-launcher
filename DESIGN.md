@@ -149,32 +149,38 @@ pm i -g @deepseek-ai/dsh@latest → ヘルパー配置。
 - Node 不足 → 「Node 24.9 以上が必要」＋コマンド提示。
 - 停止後の起動失敗 → ログ末尾と終了コードを受領書の下に表示。
 
-### 5.7 PWA を開く（Brave アプリ、v0.1.9）
+### 5.7 PWA を開く（ブラウザの Web アプリ、v0.1.13）
 
 DSH の Web GUI は PWA を配信している（`/manifest.webmanifest`、`display: standalone`、`start_url: "./"`）。
-Brave の「アプリとしてインストール」で作った Web アプリは独立ウィンドウで常駐するため、
-ランチャーからはタブではなくそのウィンドウを開きたい。実測（このPC）: `DeepSeek Harness` /
-`Profile 5` / `hgiemfgfjhalibdoboikeiepnnjapnpc`。
+Chromium 系ブラウザの「アプリとしてインストール」で作った Web アプリは独立ウィンドウで常駐するため、
+ランチャーからはタブではなくそのウィンドウを開きたい。
 
-- **マシン非依存**: PWA は 1 つのオリジン（このPCの DSH）に属する。マシン行の操作ではなく、
+- **マシン非依存**: Web アプリは 1 つのオリジン（このPCの DSH）に属する。マシン行の操作ではなく、
   **ボトムバー右の主ボタン「PWA を開く」**と**トレイ最上位の「PWA を開く」**に置く。
-  行メニュー・選択行の展開・マシン別トレイサブメニューには出さない（v0.1.8 の配置をやめた）。
-- **名前**: 「PWA を開く」。何を開くか（PWA）を言い、「ブラウザで開く」と区別する。
-- **起動方式**: `chrome_proxy.exe --profile-directory="Profile N" --app-id=<id>`。
-  Start Menu の `Brave Apps\DeepSeek Harness.lnk` と同じ行であり、独自の起動経路を作らない。
+  行メニュー・選択行の展開・マシン別トレイサブメニューには出さない。
+- **名前**: 「PWA を開く」。ユーザー向けの文言は**特定ブラウザ名を出さず「ブラウザ」に統一**する
+  （環境によって使うブラウザが違うため）。
+- **対象ブラウザ**: Chromium 系（Chrome / Edge / Brave / Chromium）。Firefox など Web アプリを
+  インストールできないブラウザは対象外。Brave は Beta / Dev / Nightly も探索する。
+- **起動方式**: ブラウザ同梱の app launcher（`chrome_proxy.exe` / `msedge_proxy.exe`。無ければブラウザ exe）に
+  `--profile-directory="Profile N" --app-id=<id>` を渡す。Start Menu のブラウザのアプリショートカットと同じ行。
 - **app id の算出**: Chromium の Web App ID は `GenerateId(SHA256(manifest_id))`。
   `GenerateId` は SHA256 の先頭 16 バイトを `a`–`p` の 32 文字に写像するので、
   実質 **manifest id の二重 SHA-256**。DSH の manifest は `id` を持たず `start_url: "./"` なので、
   manifest id は manifest を配信しているディレクトリ = オリジン直下（例 `http://127.0.0.1:3080/`）。
-  URL から決まり、ネットワークにも Brave の内部 DB にも依存しない。
+  URL から決まり、ネットワークにもブラウザの内部 DB にも依存しない。
   ローカル DSH は `127.0.0.1` / `localhost` の両表記を試す。
-- **インストールの判定**: `Web Applications\_crx_<id>`（アイコン。ファイル名が表示名）または
-  `Manifest Resources\<id>` がプロファイル配下に存在するか。プロファイルは `Default` → `Profile N` の順。
-- **未インストール時**: 勝手にインストールしない。「Brave で URL を開く」案内ダイアログのみ。
+- **インストールの判定**: `<User Data>\<Profile>\Web Applications\_crx_<id>`（アイコン。ファイル名が表示名）または
+  `Manifest Resources\<id>` が実在するか。Edge は `_crx__<id>`（アンダースコア2つ）なので両対応。
+  プロファイルは `Default` → `Profile N` の順。ブラウザの探索は App Paths レジストリ＋
+  Program Files / LocalAppData の既知配置。
+- **未インストール時**: 勝手にインストールしない。案内ダイアログを出し、「ブラウザで開く」で
+  既定のブラウザに URL を開く。
 - **CLI**: `dshl pwa`（検出情報）/ `--open`（起動）/ `--dry-run`（実行行のみ）/ `--json`。
+  JSON は `browser`（起動に使うブラウザ）と `browsers`（検出したブラウザ一覧）を含む。
   未インストールは終了コード `4`（要セットアップ）。
-- **決定**: `.lnk` の解析・レジストリのアプリ登録・Brave の内部 DB は読まない。
-  URL から決まる app id と `Web Applications` の実フォルダだけを見る（壊れにくく、説明できる）。
+- **決定**: `.lnk` の解析・ブラウザの内部 DB は読まない。URL から決まる app id と
+  `Web Applications` の実フォルダだけを見る（壊れにくく、説明できる）。
 
 ## 6. CLI（`dshl`、GUI と同一 exe）
 
@@ -186,7 +192,7 @@ dshl url [machine]
 dshl logs [machine] [-n 50]
 dshl setup <machine>          # ヘルパー配置のみ
 dshl open [machine] [--dry-run]              # 既定ブラウザで URL を開く
-dshl pwa [--open] [--dry-run] [--json]       # PWA（Brave アプリ）の情報 / 起動
+dshl pwa [--open] [--dry-run] [--json]       # PWA（ブラウザの Web アプリ）の情報 / 起動
 ```
 
 - `--dry-run` は実行するコマンド（受領書と同じ行）を出力して終了。
@@ -233,9 +239,9 @@ v1 への指摘「機能に対してウィンドウが贅沢（リッチすぎ�
 - テーマ: **ダーク固定**（graphite ランプ）
 - リモートのセットアップ: 手順表示＋ワンクリックコピー（Node/dsh の自動インストールはしない）
 - 起動方式: `hc` があれば herdr-app 経由、無ければ可視コンソール（前回方針を踏襲）
-- PWA を開く: **マシン非依存**でボトムバー右＋トレイ最上位（名前は「PWA を開く」）。URL → app id を
-  二重 SHA-256 で算出し `chrome_proxy.exe --profile-directory="Profile N" --app-id=<id>` で開く。
-  未インストール時は案内のみ（5.7）
+- PWA を開く: **マシン非依存**でボトムバー右＋トレイ最上位（名前は「PWA を開く」、UI は「ブラウザ」表記）。
+  URL → app id を二重 SHA-256 で算出し、Chromium 系ブラウザ（Chrome / Edge / Brave / Chromium）から
+  検出した Web アプリを同梱の proxy exe で起動する。未インストール時は案内のみ（5.7）
 - 配布: GitHub Releases（自己完結 exe を推奨 ＋ framework-dependent 軽量版、`install.ps1`、SHA256SUMS）。
   `v*` タグ push で Actions がビルドして Release を作成する（12）
 - ライセンス: **MIT**。非公式ツールであることを README と Release 本文に明記し、上流の
