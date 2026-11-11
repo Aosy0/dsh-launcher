@@ -73,11 +73,13 @@ $StartMenuShortcut = Join-Path $StartMenu $ShortcutName
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) $ShortcutName
 $ConfigDir = Join-Path $env:APPDATA 'DshLauncher'
 
+# When this script is the copy installed next to dshl.exe, its own folder is the install dir.
+$scriptRoot = ''
+try { $scriptRoot = $PSScriptRoot } catch { }
+
 # An installed copy of this script sits next to dshl.exe: default to that folder so
 # `-Uninstall` (and reinstall) work without remembering a custom -InstallDir.
 if (-not $PSBoundParameters.ContainsKey('InstallDir')) {
-    $scriptRoot = ''
-    try { $scriptRoot = $PSScriptRoot } catch { }
     if ($scriptRoot -and (Test-Path -LiteralPath (Join-Path $scriptRoot $ExeName))) {
         $InstallDir = $scriptRoot
     } else {
@@ -85,6 +87,18 @@ if (-not $PSBoundParameters.ContainsKey('InstallDir')) {
     }
 }
 $InstallExe = Join-Path $InstallDir $ExeName
+
+function Test-ScriptInsideInstallDir {
+    if (-not $scriptRoot) { return $false }
+    try {
+        return [string]::Equals(
+            [System.IO.Path]::GetFullPath($scriptRoot).TrimEnd('\'),
+            [System.IO.Path]::GetFullPath($InstallDir).TrimEnd('\'),
+            [System.StringComparison]::OrdinalIgnoreCase)
+    } catch {
+        return $false
+    }
+}
 
 function Write-Step([string]$Message) {
     Write-Host "==> $Message" -ForegroundColor Cyan
@@ -151,16 +165,30 @@ if ($Uninstall) {
         }
     }
     if (Test-Path -LiteralPath $InstallDir) {
-        for ($attempt = 1; $attempt -le 5; $attempt++) {
-            try {
-                Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction Stop
-                break
-            } catch {
-                if ($attempt -eq 5) { throw "削除できませんでした（実行中のプロセスが残っている可能性）: $InstallDir`n$($_.Exception.Message)" }
-                Start-Sleep -Milliseconds 500
+        if (Test-ScriptInsideInstallDir) {
+            # The running .cmd/.ps1 lives inside the folder: deleting it from here makes cmd.exe
+            # complain while it still reads the batch file. Let a detached cmd remove it after we exit.
+            $command = 'timeout /t 2 /nobreak >nul & rmdir /s /q "' + $InstallDir + '"'
+            $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+            $startInfo.FileName = $env:ComSpec
+            $startInfo.Arguments = '/c ' + $command
+            $startInfo.UseShellExecute = $false
+            $startInfo.CreateNoWindow = $true
+            $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+            [System.Diagnostics.Process]::Start($startInfo) | Out-Null
+            Write-Host "    削除予約: $InstallDir（数秒後に削除）"
+        } else {
+            for ($attempt = 1; $attempt -le 5; $attempt++) {
+                try {
+                    Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction Stop
+                    break
+                } catch {
+                    if ($attempt -eq 5) { throw "削除できませんでした（実行中のプロセスが残っている可能性）: $InstallDir`n$($_.Exception.Message)" }
+                    Start-Sleep -Milliseconds 500
+                }
             }
+            Write-Host "    削除: $InstallDir"
         }
-        Write-Host "    削除: $InstallDir"
     } else {
         Write-Host "    （配置先は見つかりませんでした: $InstallDir）"
     }
@@ -213,13 +241,22 @@ try {
     $scriptAsset = $release.assets | Where-Object { $_.name -eq 'install.ps1' } | Select-Object -First 1
     if ($scriptAsset) {
         try {
-            Invoke-WebRequest -Uri $scriptAsset.browser_download_url -OutFile (Join-Path $InstallDir 'install.ps1') `
+            $downloadedScript = Join-Path $tempDir 'install.ps1'
+            Invoke-WebRequest -Uri $scriptAsset.browser_download_url -OutFile $downloadedScript `
                 -Headers @{ 'User-Agent' = $UserAgent } -TimeoutSec 120 | Out-Null
+
+            # Windows PowerShell 5.1 reads BOM-less UTF-8 as CP932 and breaks on the Japanese text,
+            # so the installed copy is written as UTF-8 WITH BOM for update.cmd / uninstall.cmd.
+            $scriptText = [System.IO.File]::ReadAllText($downloadedScript)
+            [System.IO.File]::WriteAllText(
+                (Join-Path $InstallDir 'install.ps1'),
+                $scriptText,
+                [System.Text.UTF8Encoding]::new($true))
 
             # .cmd shims: the default Windows PowerShell execution policy can block .ps1 files,
             # so updating/uninstalling from the installed folder goes through these instead.
             $updateCmd = "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`" %*`r`n"
-            $uninstallCmd = "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`" -Uninstall %*`r`n"
+            $uninstallCmd = "@echo off`r`ncd /d `"%TEMP%`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%~dp0install.ps1`" -Uninstall %*`r`n"
             Set-Content -Path (Join-Path $InstallDir 'update.cmd') -Value $updateCmd -Encoding Ascii
             Set-Content -Path (Join-Path $InstallDir 'uninstall.cmd') -Value $uninstallCmd -Encoding Ascii
         } catch {

@@ -87,6 +87,8 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
   各サイズは `design/icon-sizes.png`。
 - インストール先に `update.cmd` / `uninstall.cmd` を追加。Windows の既定の実行ポリシー（Restricted）でも
   更新・アンインストールができる（`powershell -ExecutionPolicy Bypass` 経由の .cmd）。
+  配置先の `install.ps1` は Windows PowerShell 5.1 でも読めるよう **UTF-8 BOM 付き**で書き出す。
+  アンインストールは、実行中の .cmd が消えて cmd.exe がエラーを出さないよう**終了後にバックグラウンドで削除**する。
 
 ## 修正履歴（v0.1.11）
 
