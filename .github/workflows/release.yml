@@ -2,7 +2,7 @@ name: release
 
 # Builds the Windows executables and publishes them to GitHub Releases.
 # Push a tag that matches <Version> in src/DshLauncher/DshLauncher.csproj:
-#   git tag v0.1.10 && git push origin v0.1.10
+#   git tag v0.1.11 && git push origin v0.1.11
 on:
   push:
     tags:
@@ -16,10 +16,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 9.0.x
 
@@ -81,3 +81,5 @@ jobs:
           gh release create "${{ github.ref_name }}" @files `
             --title "${{ github.ref_name }}" `
             --generate-notes
+
+
