@@ -7,12 +7,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>dshl</AssemblyName>
-    <Version>0.1.9</Version>
+    <Version>0.1.10</Version>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <AssemblyTitle>DSH Launcher</AssemblyTitle>
+    <Product>DSH Launcher</Product>
+    <Description>DeepSeek Harness の起動・停止・状態確認（GUI + CLI）</Description>
     <RootNamespace>DshLauncher</RootNamespace>
     <StartupObject>DshLauncher.Program</StartupObject>
-    <ApplicationIcon />
     <InvariantGlobalization>false</InvariantGlobalization>
     <DebugType>embedded</DebugType>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 </Project>
 

@@ -5,6 +5,53 @@ Windows デスクトップアプリ（WPF / .NET 9）＋ CLI（`dshl`）。同�
 
 ![actual UI](design/v3/24-gui-pwa.png)
 
+## インストール
+
+Windows 10/11（x64）。Releases の exe は単体で動く（.NET ランタイム不要、自己完結版）。
+
+### かんたんインストール（推奨）
+
+```powershell
+irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 | iex
+```
+
+- `%LOCALAPPDATA%\Programs\DshLauncher\dshl.exe` に配置し、スタートメニューに「DSH Launcher」を追加する
+- 配布物の SHA256 を `SHA256SUMS.txt` と照合してから配置する
+- 更新: 同じコマンドを再実行 / アンインストール（`-Purge` で設定・ログも削除）:
+  ```powershell
+  & "$env:LOCALAPPDATA\Programs\DshLauncher\install.ps1" -Uninstall
+  ```
+
+### ポータブル（インストールしない）
+
+[Releases](https://github.com/Aosy0/dsh-launcher/releases) から `dshl-<version>-win-x64.exe` をダウンロードして
+実行するだけ（約 70MB、.NET 不要）。
+.NET 9 Desktop Runtime が入っている場合は軽量版 `dshl-<version>-win-x64-framework-dependent.exe`（約 0.5MB）も使える。
+
+未署名の exe のため、初回は SmartScreen の「Windows によって PC が保護されました」が出ることがある。
+「詳細情報」→「実行」で進む。
+
+### 前提
+
+| 使う機能 | 必要なもの |
+|---|---|
+| このPCの DSH を起動 / 停止 | Node.js 24.9 以上と dsh（`npm i -g @deepseek-ai/dsh`） |
+| リモートの DSH を操作 | `~/.ssh/config` のホストエイリアス（鍵認証） |
+| PWA を開く | Brave と、DSH の PWA（Brave で DSH を開き「アプリとしてインストール」） |
+
+## はじめかた
+
+1. 起動するとマシン一覧のウィンドウとトレイ常駐が始まる。初回に `%APPDATA%\DshLauncher\hosts.json` を作成し、
+   `~/.ssh/config` のホストを一覧へ自動で追加する（プロファイル名・ポート・URL は「設定」で編集）。
+2. このPCの行の「起動」で DSH を起動する（タスクスケジューラ経由なので、ランチャーを閉じても残る）。
+3. リモートが「要セットアップ」なら「DSH をセットアップ」で Node と dsh を導入する。
+4. ボトムバー / トレイの「PWA を開く」で DSH の Brave アプリを開ける。
+5. コマンドラインは同じ exe:
+
+   ```powershell
+   & "$env:LOCALAPPDATA\Programs\DshLauncher\dshl.exe" status --json
+   ```
+
 ## ドキュメント
 
 | 内容 | 場所 |
@@ -13,7 +60,7 @@ Windows デスクトップアプリ（WPF / .NET 9）＋ CLI（`dshl`）。同�
 | 設計・デザイン・決定事項 | [DESIGN.md](DESIGN.md) |
 | 開発・構成・障害対応 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 
-## 実装状況（v0.1 / 2026-11-11）
+## 実装状況（v0.1.10 / 2026-11-11）
 
 | 機能 | 状態 |
 |---|---|
@@ -30,7 +77,19 @@ Windows デスクトップアプリ（WPF / .NET 9）＋ CLI（`dshl`）。同�
 | ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 |
 | マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 |
 | PWA を開く（Brave アプリ、マシン非依存） | ✅ 実装・実機確認（DeepSeek Harness / Profile 5） |
+| 配布（GitHub Releases / install.ps1 / アイコン） | ✅ v0.1.10 |
 | URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 |
+
+## 修正履歴（v0.1.10）
+
+- **他のPCへ配布できるようにした**。
+  - 自己完結の単一 exe（.NET ランタイム不要、約 70MB）と framework-dependent（約 0.5MB、.NET 9 Desktop Runtime が必要）を
+    GitHub Releases に添付。`.github/workflows/release.yml` が `v*` タグの push でビルドして Release を作成する
+    （タグと csproj の `<Version>` が一致しないと失敗）。
+  - `install.ps1`: latest の exe を取得 → `SHA256SUMS.txt` と照合 → `%LOCALAPPDATA%\Programs\DshLauncher` に配置 →
+    スタートメニューにショートカット。`-Uninstall` / `-Purge`。自分自身も配置先にコピーするので更新・削除に再取得は不要。
+  - アプリアイコン（`src/DshLauncher/app.ico`、`python tools/make-icon.py` で生成）を追加し、
+    ウィンドウ・トレイ・ショートカットを同じ意匠に。exe のメタデータ（ProductName / Description）も設定。
 
 ## 修正履歴（v0.1.9）
 
@@ -100,7 +159,7 @@ Windows デスクトップアプリ（WPF / .NET 9）＋ CLI（`dshl`）。同�
 - キャンセルでダイアログが閉じない問題も同根で解消。実機で「キャンセル→PID不変」「再起動→PID変更」を確認。
 - 受領書のコマンド表記を dsh <profile> --port <port> --no-open に短縮。
 
-## 起動
+## 起動（リポジトリのビルド）
 
 ```powershell
 # GUI（トレイ常駐）
@@ -129,11 +188,15 @@ dshl gui
 
 ```
 dsh-launcher/
+├─ .github/workflows/release.yml  # v* タグ → ビルドして GitHub Release を作成
+├─ install.ps1            # 配布用インストーラ（latest を取得・検証・配置）
+├─ tools/make-icon.py     # app.ico の生成（Pillow が必要）
 ├─ DESIGN.md              # 監査・方向・9パス・リモート設計・CLI仕様・決定事項
 ├─ design/
 │  ├─ v1/ v2/ v3/         # デザインの変遷（v3 が確定、15-gui-window.png は実機）
 ├─ mockups/v0/            # 最初の3案（比較用）
 ├─ src/DshLauncher/       # WPF (.NET 9) 実装
+│  ├─ app.ico             # アプリアイコン（tools/make-icon.py で生成）
 │  ├─ Program.cs          # GUI/CLI 分岐（WinExe + コンソール接続）
 │  ├─ Model.cs            # 設定・状態・ポート検出
 │  ├─ Local.cs            # ローカル起動/停止/状態（タスクスケジューラ起動）
@@ -144,6 +207,8 @@ dsh-launcher/
 │  └─ Dialogs.cs          # 確認・名前変更・マシン追加・ログ
 └─ dist/dshl.exe          # ビルド済み単一ファイル（.NET 9 Desktop Runtime 使用）
 ```
+
+リリースの作り方・配布物のビルドは [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) を参照。
 
 ## 実測メモ
 

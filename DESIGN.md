@@ -236,6 +236,8 @@ v1 への指摘「機能に対してウィンドウが贅沢（リッチすぎ�
 - PWA を開く: **マシン非依存**でボトムバー右＋トレイ最上位（名前は「PWA を開く」）。URL → app id を
   二重 SHA-256 で算出し `chrome_proxy.exe --profile-directory="Profile N" --app-id=<id>` で開く。
   未インストール時は案内のみ（5.7）
+- 配布: GitHub Releases（自己完結 exe を推奨 ＋ framework-dependent 軽量版、`install.ps1`、SHA256SUMS）。
+  `v*` タグ push で Actions がビルドして Release を作成する（12）
 
 ## 10. 決定済み: 画面構成 = A + C ハイブリッド
 
@@ -265,6 +267,21 @@ B（単一マシン型・タブ切替）は**マシン数が増えると破綻�
 ## 11. 未決事項
 
 - 実装着手のタイミング（デザインは確定）
+
+## 12. 配布（v0.1.10）
+
+他のPCへ配布できる形にする。ランチャー自体は単一 exe（設定は `%APPDATA%`）なので、インストーラは
+「配置＋ショートカット」だけを担い、レジストリ・PATH・サービスを触らない。
+
+- **Releases**: `.github/workflows/release.yml` が `v*` タグ push でビルドし Release を作成
+  （タグと csproj の `<Version>` が一致しない場合は失敗）。
+  - `dshl-<ver>-win-x64.exe`: 自己完結（.NET 不要、約 70MB）。推奨。
+  - `dshl-<ver>-win-x64-framework-dependent.exe`: 約 0.5MB。.NET 9 Desktop Runtime が必要。
+  - `install.ps1` と `SHA256SUMS.txt` を同梱。
+- **install.ps1**: latest の exe を取得 → SHA256 照合 → `%LOCALAPPDATA%\Programs\DshLauncher` に配置 →
+  スタートメニューにショートカット。自分自身も配置先にコピーし、更新・アンインストール（`-Uninstall`）に使う。
+- **アイコン**: `src/DshLauncher/app.ico`（`tools/make-icon.py` で生成）。ウィンドウ・トレイ・ショートカットを同じ意匠に。
+- **署名**: なし。初回実行時の SmartScreen 警告は README で案内する。
 
 ---
 

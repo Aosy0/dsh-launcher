@@ -7,11 +7,15 @@
 ```
 dsh-launcher/
 ├─ AGENTS.md                 # セッション引き継ぎ（最小）
-├─ README.md                 # 使い方・現状
+├─ README.md                 # 使い方・現状・インストール手順
 ├─ DESIGN.md                 # 設計・デザイン・決定事項
 ├─ docs/DEVELOPMENT.md       # このファイル
+├─ .github/workflows/release.yml  # v* タグ → ビルドして GitHub Release を作成
+├─ install.ps1               # 配布用インストーラ（latest を取得・検証・配置）
+├─ tools/make-icon.py        # app.ico の生成（Pillow が必要）
 ├─ src/DshLauncher/
-│  ├─ DshLauncher.csproj     # net9.0-windows / UseWPF / UseWindowsForms / <Version>
+│  ├─ DshLauncher.csproj     # net9.0-windows / UseWPF / UseWindowsForms / <Version> / ApplicationIcon
+│  ├─ app.ico                # アプリアイコン（make-icon.py で生成。直接編集しない）
 │  ├─ Program.cs             # WinExe。引数あり→CLI、無し/gui→WPF。ConsoleBridge
 │  ├─ AppInfo                # バージョン文字列（アセンブリ由来）
 │  ├─ Model.cs               # hosts.json、MachineStatus、ポート検出（netstat）
@@ -23,7 +27,7 @@ dsh-launcher/
 │  ├─ Ui.cs                  # 一覧ウィンドウ・トレイ・テーマ・LoadingBar
 │  └─ Dialogs.cs             # 確認/名前変更/マシン追加/ログ（すべてコピー可能）
 ├─ design/                   # v1/v2/v3 のモックと実機キャプチャ
-└─ dist/dshl.exe             # publish 成果物（利用者はこれを起動）
+└─ dist/dshl.exe             # publish 成果物（リポジトリ内での実行用）
 ```
 
 ## ビルドと配布
@@ -37,8 +41,28 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 ```
 
 - publish 前に `Get-Process dshl | Stop-Process -Force`（実行中だと `MSB4018` で失敗）
-- 配布は framework-dependent 単一 exe（約 330KB）。.NET 9 Desktop Runtime が必要（このPCは導入済み）
+- `dist\dshl.exe` は framework-dependent 単一 exe（約 0.5MB。アイコン込み）。.NET 9 Desktop Runtime が必要
 - 起動: `dist\dshl.exe`。CLI: 同じ exe に `dshl status|start|stop|restart|setup|rename|machines|logs|url|open|pwa|--version`
+- アイコンは `python tools/make-icon.py` で `src/DshLauncher/app.ico` を再生成する（Pillow が必要。ico はコミットする）
+
+## リリース（GitHub Releases）
+
+配布物は GitHub Actions が作る。**タグと csproj の `<Version>` は一致させる**（ワークフローが検証して失敗する）。
+
+1. `src/DshLauncher/DshLauncher.csproj` の `<Version>` を上げる（例 `0.1.10`）
+2. ビルドして `dist\dshl.exe` を更新し、README / このファイルを更新
+3. コミットして push: `git add -A; git commit -m "v0.1.10"; git push origin main`
+4. タグを作って push: `git tag v0.1.10; git push origin v0.1.10`
+5. Actions が自動で実行される:
+   - 自己完結の単一 exe `dshl-<ver>-win-x64.exe`（約 70MB、.NET 不要）
+   - framework-dependent `dshl-<ver>-win-x64-framework-dependent.exe`（約 0.5MB）
+   - `install.ps1` と `SHA256SUMS.txt`
+   を添付した Release を作成（`gh release create --generate-notes`）
+6. 確認: `gh run list --workflow release.yml` / `gh release view v0.1.10` /
+   インストール動作は `.\install.ps1 -Version v0.1.10 -InstallDir $env:TEMP\dshl-test -NoShortcut` で確認できる
+
+- リポジトリの Actions は public リポジトリで自動実行される。手動実行は無し（タグのみ）
+- 署名はしていないため、初回実行時に SmartScreen の警告が出る（README に案内あり）
 
 ## 実行時データ（秘密情報なし）
 

@@ -1,0 +1,83 @@
+name: release
+
+# Builds the Windows executables and publishes them to GitHub Releases.
+# Push a tag that matches <Version> in src/DshLauncher/DshLauncher.csproj:
+#   git tag v0.1.10 && git push origin v0.1.10
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Check tag matches project version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          [xml]$project = Get-Content src/DshLauncher/DshLauncher.csproj
+          $version = $project.Project.PropertyGroup.Version
+          if ($tag -ne "v$version") {
+            throw "tag $tag does not match <Version>$version</Version> in src/DshLauncher/DshLauncher.csproj"
+          }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Publish (framework-dependent, small)
+        shell: pwsh
+        run: |
+          dotnet publish src/DshLauncher -c Release -r win-x64 `
+            --self-contained false `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o out/portable
+
+      - name: Publish (self-contained, no runtime needed)
+        shell: pwsh
+        run: |
+          dotnet publish src/DshLauncher -c Release -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -o out/full
+
+      - name: Collect release assets
+        shell: pwsh
+        run: |
+          $version = $env:VERSION
+          New-Item -ItemType Directory -Path assets -Force | Out-Null
+          Copy-Item out/full/dshl.exe "assets/dshl-$version-win-x64.exe"
+          Copy-Item out/portable/dshl.exe "assets/dshl-$version-win-x64-framework-dependent.exe"
+          Copy-Item install.ps1 assets/install.ps1
+
+          $sums = Get-ChildItem assets -File |
+            Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+            Sort-Object Name |
+            ForEach-Object {
+              "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name
+            }
+          $sums | Set-Content assets/SHA256SUMS.txt -Encoding ascii
+
+          Get-ChildItem assets | Select-Object Name, @{ n = 'MB'; e = { [math]::Round($_.Length / 1MB, 2) } } | Format-Table -AutoSize
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = Get-ChildItem assets -File | Select-Object -ExpandProperty FullName
+          gh release create "${{ github.ref_name }}" @files `
+            --title "${{ github.ref_name }}" `
+            --generate-notes

@@ -976,6 +976,21 @@ internal sealed class TrayIcon : IDisposable
 
     private static Drawing.Icon BuildIcon()
     {
+        // Prefer the application icon compiled into the exe (app.ico) so the tray matches Explorer.
+        try
+        {
+            var path = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(path))
+            {
+                var associated = Drawing.Icon.ExtractAssociatedIcon(path);
+                if (associated is not null) return associated;
+            }
+        }
+        catch
+        {
+            // Fall through to the drawn icon.
+        }
+
         using var bitmap = new Drawing.Bitmap(32, 32);
         using (var graphics = Drawing.Graphics.FromImage(bitmap))
         {
