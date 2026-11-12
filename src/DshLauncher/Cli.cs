@@ -404,6 +404,8 @@ internal static class Cli
 
         if (!options.Open)
         {
+            var knownAuthenticated = PwaAuth.KnownAuthenticated(app);
+            var authAvailable = PwaAuth.CanAuthenticate(local, app);
             if (options.Json)
             {
                 Console.WriteLine(JsonSerializer.Serialize(new
@@ -418,17 +420,22 @@ internal static class Cli
                     browsers,
                     profile = app.ProfileDirectory,
                     command = app.CommandLine,
+                    authenticated = knownAuthenticated,
+                    authAvailable,
                 }, Json.Options));
             }
             else
             {
                 Console.WriteLine($"{app.Label}  {app.AppId}  {app.ProfileDirectory}  {local.TargetUrl}");
                 Console.WriteLine(app.CommandLine);
+                if (knownAuthenticated is true) Console.WriteLine("認証: 済み");
+                else if (authAvailable) Console.WriteLine("認証: 未確認（--open で自動認証できます）");
+                else Console.WriteLine("認証: 自動認証の対象外（127.0.0.1 の PWA / .credentials.yaml が必要です）");
             }
             return 0;
         }
 
-        var (ok, message) = BrowserApps.Launch(app);
+        var result = PwaAuth.OpenAsync(local, app, line => Console.Error.WriteLine(line)).GetAwaiter().GetResult();
         if (options.Json)
         {
             Console.WriteLine(JsonSerializer.Serialize(new
@@ -439,15 +446,17 @@ internal static class Cli
                 browser = app.Browser,
                 profile = app.ProfileDirectory,
                 command = app.CommandLine,
-                ok,
-                message,
+                ok = result.Ok,
+                authenticated = result.Authenticated,
+                authUrlIssued = result.AuthUrlIssued,
+                message = result.Message,
             }, Json.Options));
         }
         else
         {
-            Console.WriteLine(ok ? message : $"failed: {message}");
+            Console.WriteLine(result.Ok ? result.Message : $"failed: {result.Message}");
         }
-        return ok ? 0 : 1;
+        return result.Ok ? 0 : 1;
     }
 
     private static int Unknown(string command)

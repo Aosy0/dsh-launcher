@@ -28,6 +28,10 @@ Windows 用の dsh（DeepSeek Harness）ランチャー。WPF/.NET 9 アプリ�
   （`chrome_proxy.exe` / `msedge_proxy.exe`）に `--profile-directory` `--app-id`。app id は manifest id の
   **二重 SHA-256**。`.lnk` 解析・ブラウザ内部 DB は使わない。検出は `dshl pwa --json`（`browser` / `browsers`）。
   **ユーザー向け文言は特定ブラウザ名を出さず「ブラウザ」に統一**する。
+- **PWA の初回認証**: 401 を検知したら `PwaAuth.cs` が `$DSH_HOME/.credentials.yaml` の browser-session secret から
+  署名クッキー（`dsh-auth-*`）を生成し、非表示のアプリウィンドウ＋一時ローカルページでブラウザに設定して開き直す。
+  認証状態は `%APPDATA%\DshLauncher\pwa-auth.json` とウィンドウタイトルで判断する。対象は `127.0.0.1` の PWA のみ
+  （dsh web の起動ログは実行中に排他ロックされるため、`?token=` URL の読み取りには頼らない）。
 
 ## 詳細ドキュメント
 

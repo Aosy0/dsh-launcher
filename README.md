@@ -51,7 +51,7 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 2. このPCの行の「起動」で DSH を起動する（タスクスケジューラ経由なので、ランチャーを閉じても残る）。
 3. リモートが「要セットアップ」なら「DSH をセットアップ」で Node と dsh を導入する。
 4. ボトムバー / トレイの「PWA を開く」で、DSH をインストール済みブラウザの Web アプリ（PWA）として開ける。
-   未インストールなら、ブラウザで開いて追加する手順を案内する。
+   初回（未認証）は自動で認証を更新してから開く。未インストールなら、ブラウザで開いて追加する手順を案内する。
 5. コマンドラインは同じ exe:
 
    ```powershell
@@ -66,7 +66,7 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | 設計・デザイン・決定事項 | [DESIGN.md](DESIGN.md) |
 | 開発・構成・障害対応 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 
-## 実装状況（v0.1.13 / 2026-11-12）
+## 実装状況（v0.1.14 / 2026-11-12）
 
 | 機能 | 状態 |
 |---|---|
@@ -82,11 +82,23 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | リモート: DSH の自動セットアップ（Node 24.9+ と dsh） | ✅ 実機確認（minipc-server: Node v24.13.0 / dsh 0.2.2-rc.1） |
 | ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 |
 | マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 |
-| PWA を開く（ブラウザの Web アプリ、マシン非依存） | ✅ 実装・実機確認（Chrome / Edge / Brave の Web アプリ検出） |
+| PWA を開く（ブラウザの Web アプリ、マシン非依存） | ✅ 実装・実機確認（Chrome / Edge / Brave の Web アプリ検出、初回認証の自動化） |
 | 配布（GitHub Releases / install.ps1 / アイコン） | ✅ v0.1.10 から |
 | URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 |
 
-## 修正履歴（v0.1.13）
+## 修正履歴（v0.1.14）
+
+- **PWA の初回認証を自動化**。「PWA を開く」で未認証（401 画面）を検知すると、
+  DSH が発行するブラウザセッションクッキーを自動で発行してブラウザプロファイルに設定し、PWA を開き直す。
+  - dsh web は署名つき HttpOnly クッキー（`dsh-auth-*`）で UI を保護する。通常は起動時に表示される
+    `?token=` 付き URL を開いて取得するが、dsh 実行中はその出力ログが排他ロックされていて読めない。
+    そこで `$DSH_HOME/.credentials.yaml` の browser-session secret から**同じクッキーを再生成**し、
+    ランチャーの一時ローカルページ（`http://127.0.0.1:<ephemeral>/`、クッキーはポート非依存）経由で
+    ブラウザに設定する。設定先は**非表示のアプリウィンドウ**なので、タブやウィンドウは残らない。
+  - 認証済みかどうかは、PWA のウィンドウタイトル（401 は `127.0.0.1:3080`、認証済みはアプリ名）と
+    `%APPDATA%\DshLauncher\pwa-auth.json`（ブラウザ・プロファイル・有効期限）で判断する。
+  - 自動認証は `http://127.0.0.1:<port>` からインストールした PWA が対象（クッキーを設定できるループバック限定）。
+    `dshl pwa --open` でも同じ自動認証が働く。
 
 - 「Brave」前提だった表記を**「ブラウザ」に統一**し、PWA（Web アプリ）を
   **Chrome / Edge / Brave / Chromium** から自動検出して起動できるようにした。
@@ -211,7 +223,11 @@ dshl gui
 
 - **PWA を開く**: ボトムバー右の「PWA を開く」、または `dshl pwa --open`。
   ブラウザの Web アプリ（このPCの DSH）を独立ウィンドウで開く。未インストールならインストール手順を案内する。
-  `dshl pwa --json` で、起動に使うブラウザ（`browser`）と検出したブラウザ一覧（`browsers`）を確認できる。
+  **未認証（401）なら自動で認証クッキーを発行してから開き直す**（`~/.dsh/.credentials.yaml` の
+  browser-session secret から生成。対象は `http://127.0.0.1:<port>` の PWA）。認証状態は
+  `%APPDATA%\DshLauncher\pwa-auth.json` に保存する。
+  `dshl pwa --json` で、起動に使うブラウザ（`browser`）・検出したブラウザ一覧（`browsers`）・
+  認証状態（`authenticated`）・自動認証の可否（`authAvailable`）を確認できる。
 
 - 設定: `%APPDATA%\DshLauncher\hosts.json`（秘密情報なし。SSH は `~/.ssh/config` のエイリアスを使用）
 - ローカル起動は **タスクスケジューラ経由**（`DshLauncher\start-<id>`）。サーバーがランチャーの
@@ -238,6 +254,7 @@ dsh-launcher/
 │  ├─ Local.cs            # ローカル起動/停止/状態（タスクスケジューラ起動）
 │  ├─ Remote.cs           # SSH・リモート検出/操作・ヘルパースクリプト
 │  ├─ BrowserApp.cs        # ブラウザの Web アプリ（PWA）の検出と起動（app id 算出・プロファイル走査）
+│  ├─ PwaAuth.cs           # PWA の初回認証（署名クッキーの発行・ブラウザへの設定・認証状態）
 │  ├─ Cli.cs              # dshl サブコマンド
 │  ├─ Ui.cs               # 一覧ウィンドウ・トレイ・テーマ
 │  └─ Dialogs.cs          # 確認・名前変更・マシン追加・ログ

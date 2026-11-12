@@ -176,11 +176,22 @@ Chromium 系ブラウザの「アプリとしてインストール」で作っ�
   Program Files / LocalAppData の既知配置。
 - **未インストール時**: 勝手にインストールしない。案内ダイアログを出し、「ブラウザで開く」で
   既定のブラウザに URL を開く。
-- **CLI**: `dshl pwa`（検出情報）/ `--open`（起動）/ `--dry-run`（実行行のみ）/ `--json`。
-  JSON は `browser`（起動に使うブラウザ）と `browsers`（検出したブラウザ一覧）を含む。
+- **初回認証（v0.1.14）**: DSH の Web UI は署名つき HttpOnly クッキー（`dsh-auth-<authority の SHA-256>`）で保護される。
+  dsh web は起動時に `?token=` 付き URL を表示するが、その出力（ランチャーが捕捉するログ）は dsh 実行中に
+  排他ロックされて読めない。そこで **`$DSH_HOME/.credentials.yaml` の browser-session secret から
+  同じクッキーを再生成**し、`127.0.0.1` の一時ページ（クッキーはポート非依存）を
+  **非表示のアプリウィンドウ**で開いて設定する（タブ・ウィンドウは残らない）。設定前にサーバーへ
+  Cookie ヘッダで 200 を確認する。対象は `http://127.0.0.1:<port>` の PWA（ループバック限定）。
+- **認証状態の判断**: PWA のウィンドウタイトル（401 は authority 表示、認証済みはアプリ名を含む）と、
+  `%APPDATA%\DshLauncher\pwa-auth.json`（ブラウザ・プロファイル・authority・有効期限）の両方で判断する。
+  401 を検知した場合だけ認証を更新し、PWA を開き直す（無駄なタブやウィンドウを出さない）。
+- **CLI**: `dshl pwa`（検出情報）/ `--open`（起動。自動認証込み）/ `--dry-run`（実行行のみ）/ `--json`。
+  JSON は `browser` / `browsers` / `authenticated` / `authAvailable` を含む。
   未インストールは終了コード `4`（要セットアップ）。
 - **決定**: `.lnk` の解析・ブラウザの内部 DB は読まない。URL から決まる app id と
   `Web Applications` の実フォルダだけを見る（壊れにくく、説明できる）。
+  認証だけは dsh のクッキー仕様に依存するため、対象をループバック PWA に限定し、失敗時は従来どおり
+  案内にフォールバックする。
 
 ## 6. CLI（`dshl`、GUI と同一 exe）
 

@@ -771,8 +771,14 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>Open this PC's DSH as its installed browser web app (PWA); it is not tied to a machine row.</summary>
-    private void OpenPwa()
+    private async void OpenPwa() => await OpenPwaAsync();
+
+    private bool _pwaOpening;
+
+    /// <summary>Opens the PWA and mints a browser session first when the profile is not authenticated.</summary>
+    internal async Task OpenPwaAsync()
     {
+        if (_pwaOpening) return;
         var local = _config.LocalMachine;
         var app = BrowserApps.Find(local);
         if (app is null)
@@ -780,8 +786,17 @@ internal sealed class MainWindow : Window
             ExplainMissingPwa(local);
             return;
         }
-        var (ok, message) = BrowserApps.Launch(app);
-        if (!ok) ConfirmWindow.Info(this, "PWA を開く", message);
+
+        _pwaOpening = true;
+        try
+        {
+            var result = await PwaAuth.OpenAsync(local, app);
+            if (!result.Ok) ConfirmWindow.Info(this, "PWA を開く", result.Message);
+        }
+        finally
+        {
+            _pwaOpening = false;
+        }
     }
 
     /// <summary>Tell the user how to install the web app, and open the URL in the default browser.</summary>
@@ -924,15 +939,7 @@ internal sealed class TrayIcon : IDisposable
 
     private void OpenPwa()
     {
-        var local = _window.Config.LocalMachine;
-        var app = BrowserApps.Find(local);
-        if (app is null)
-        {
-            _window.Dispatcher.Invoke(() => _window.ExplainMissingPwa(local));
-            return;
-        }
-        var (ok, message) = BrowserApps.Launch(app);
-        if (!ok) _window.Dispatcher.Invoke(() => ConfirmWindow.Info(_window, "PWA を開く", message));
+        _window.Dispatcher.Invoke(() => _ = _window.OpenPwaAsync());
     }
 
     private void ShowLogs(Machine machine)

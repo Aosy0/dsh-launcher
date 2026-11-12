@@ -16,6 +16,7 @@ internal sealed class BrowserAppInfo
     public string ProfileDirectory { get; set; } = "";
     public string? Name { get; set; }
     public string Executable { get; set; } = "";
+    public string BrowserExe { get; set; } = "";
     public string Browser { get; set; } = "";
 
     /// <summary>The manifest id the app id was derived from (for diagnostics; not always known).</summary>
@@ -146,6 +147,7 @@ internal static class BrowserApps
                     ProfileDirectory = Path.GetFileName(profile),
                     Name = iconDir is null ? null : NameFor(iconDir),
                     Executable = installation.LaunchExe,
+                    BrowserExe = installation.BrowserExe,
                     Browser = installation.Label,
                 };
             }

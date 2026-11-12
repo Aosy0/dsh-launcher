@@ -22,6 +22,7 @@ dsh-launcher/
 │  ├─ Local.cs               # ローカル起動/停止/状態（タスクスケジューラ起動）
 │  ├─ Remote.cs              # SSH、リモート検出/操作、agent.sh / agent.ps1
 │  ├─ BrowserApp.cs          # ブラウザの Web アプリ（PWA）検出・起動（app id 算出、プロファイル走査）
+│  ├─ PwaAuth.cs             # PWA の初回認証（署名クッキー発行・ブラウザ設定・認証状態）
 │  ├─ Setup.cs               # RemoteSetup/SetupScripts（Node+dsh 導入）、Ps1Encoding(BOM)
 │  ├─ Cli.cs                 # dshl サブコマンド、MachineOps
 │  ├─ Ui.cs                  # 一覧ウィンドウ・トレイ・テーマ・LoadingBar
@@ -72,6 +73,8 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 | 種類 | 場所 |
 |---|---|
 | 設定 | `%APPDATA%\DshLauncher\hosts.json`（camelCase。`machines[]`） |
+| PWA 認証の記憶 | `%APPDATA%\DshLauncher\pwa-auth.json`（ブラウザ・プロファイル・authority・有効期限。秘密情報なし） |
+| PWA 認証の secret | `$DSH_HOME/.credentials.yaml` の `client-connection/browser-session`（DSH が管理。ランチャーは読むだけで変更しない） |
 | ローカル起動ログ | `%APPDATA%\DshLauncher\logs\<id>.log` |
 | リモートセットアップログ | `%APPDATA%\DshLauncher\logs\<id>-setup.log` |
 | ローカル起動スクリプト | `%APPDATA%\DshLauncher\run\<id>.cmd` / `<id>.vbs` |
@@ -112,6 +115,20 @@ dotnet publish -c Release -r win-x64 --self-contained false `
       `--profile-directory="Profile N" --app-id=<id>`。無ければブラウザ exe。
     - ローカル DSH は `127.0.0.1` / `localhost` の両表記を試す。
     - 検出結果は `dshl pwa --json`（`browser` / `browsers`） / `dshl pwa --dry-run` で確認できる。
+12. **PWA の初回認証はクッキー再生成で自動化**（`PwaAuth.cs`）:
+    - DSH の Web UI は `dsh-auth-<authority の SHA-256>` という署名つき HttpOnly クッキーで保護される
+      （`@deepseek-ai/dsh-client-connection` の browser-session）。dsh web の起動時ログ（`?token=` 付き URL）は
+      **dsh 実行中に排他ロックされていて読めない**ため、ログからトークンを取る方式は使えない。
+    - 代わりに `$DSH_HOME/.credentials.yaml` の `client-connection/browser-session` secret から
+      **同じ形式のクッキーを生成**し、サーバーへ Cookie ヘッダで 200 を確認してから、
+      `127.0.0.1` の一時 HTTP サーバー（`Set-Cookie` + DSH へ 302）を**非表示のアプリウィンドウ**で開いて設定する。
+      クッキーはポート非依存なので `127.0.0.1:<ephemeral>` から `127.0.0.1:3080` に有効。
+    - ペイロードは `{"version":1,"authority","issuedAt","expiresAt"}`、`v1.<b64url(body)>.<b64url(HMAC-SHA256(secret, body))>`。
+      `expiresAt - issuedAt` はプロファイルの `cookieMaxAgeDays`（既定 30、最大 400 日相当に丸め）以下にする。
+    - 認証済み判定は、PWA ウィンドウタイトル（401 は authority、認証済みはアプリ名）と
+      `%APPDATA%\DshLauncher\pwa-auth.json` の両方。401 のときだけ認証を更新して開き直す。
+    - 自動認証は `http://127.0.0.1:<port>` の PWA のみ（https のオリジンにはクッキーを設定できない）。
+    　手動検証は `dshl pwa --json`（`authenticated` / `authAvailable`）、`dshl pwa --open`。
 
 ## テスト手順（本番 3080 を触らない）
 
@@ -127,12 +144,17 @@ dotnet publish -c Release -r win-x64 --self-contained false `
    - `AutomationElement` を ProcessId で取得し、`ControlType.Button` + `Name` で検索 → `InvokePattern`
    - ダイアログはオーナー付きのため root 直下に出ない。`EnumWindows` + `GetWindowText` でハンドルを探す
 5. ウィンドウ画像は `PrintWindow(hwnd, hdc, 2)` で取得（画面キャプチャより確実）
-6. PWA の検出・起動:
+6. PWA の検出・起動・認証:
    - `dshl pwa` が `DeepSeek Harness  <appId>  Profile N  <url>` と実行行を出す
-   - `dshl pwa --json` で `browser`（起動に使うブラウザ）と `browsers`（検出したブラウザ一覧）を確認できる
+   - `dshl pwa --json` で `browser`（起動に使うブラウザ）・`browsers`（検出したブラウザ一覧）・
+     `authenticated`（認証状態）・`authAvailable`（自動認証の可否）を確認できる
    - `dshl pwa --dry-run` が `<browser proxy> --profile-directory=... --app-id=...` を返す
    - GUI のボトムバー「PWA を開く」を `InvokePattern` で押すと既存のアプリウィンドウへフォーカス
      （重複ウィンドウは作られない）。未インストールなら案内ダイアログ
+   - 初回認証（401）の検証は、クッキーを消した別ブラウザプロファイルで行うのが安全。手順:
+     `~/.dsh/.credentials.yaml` の secret からクッキーを計算 → `127.0.0.1` の一時 HTTP ページで
+     `Set-Cookie` → `brave.exe --user-data-dir=<temp> --app=http://127.0.0.1:<ephemeral>/` を開き、
+     タイトルがアプリ名になれば成功（Cookie DB にも `dsh-auth-*` が残る）
 
 ## トラブルシュート
 
@@ -145,6 +167,7 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 | セットアップ失敗 | `logs\<id>-setup.log` を確認。Node 24.9+ / npm 到達性 / BOM |
 | タスクが Running のまま残る | 旧ビルド（cmd 直接起動）の残り。停止/再起動で掃除される |
 | 「PWA が見つかりません」 | `dshl pwa --json` で `browser` / `browsers` / appId / profile を確認。各ブラウザのプロファイル（例 Chrome: `%LOCALAPPDATA%\Google\Chrome\User Data\Profile N\Web Applications\_crx_<id>`、Edge は `_crx__<id>`）に実フォルダがあるか。ローカル DSH の URL（host/port）がインストール時と一致しているか |
+| 「認証を更新しましたが、PWA が認証状態になりません」 | `dshl pwa --json` の `authAvailable` と `%APPDATA%\DshLauncher\pwa-auth.json` を確認。`$DSH_HOME/.credentials.yaml` に `client-connection/browser-session` があるか、PWA を `http://127.0.0.1:<port>` からインストールしたか（https オリジンは自動認証の対象外）。DSH 再起動後に再試行 |
 
 ## 既知の未対応
 
@@ -152,3 +175,4 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 - 9台以上での絞り込み欄の表示テスト（実装済みだが未検証）
 - GUI からのリモートセットアップ実行の実機確認（CLI では検証済み）
 - アプリ終了時にトレイを残すか終了するかの設定
+
