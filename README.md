@@ -66,7 +66,7 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | 設計・デザイン・決定事項 | [DESIGN.md](DESIGN.md) |
 | 開発・構成・障害対応 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 
-## 実装状況（v0.1.15 / 2026-11-12）
+## 実装状況（v0.1.16 / 2026-11-13）
 
 | 機能 | 状態 |
 |---|---|
@@ -83,10 +83,23 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 |
 | マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 |
 | PWA を開く（ブラウザの Web アプリ、マシン非依存） | ✅ 実装・実機確認（Chrome / Edge / Brave の Web アプリ検出、初回認証の自動化） |
-| 新しいブラウザの認証 URL（`?token=` 付き）の発行 | ✅ 実装（未リリース。ボトムバー / 行メニュー / トレイ / CLI） |
+| 新しいブラウザの認証 URL（`?token=` 付き）の発行 | ✅ 実装・実機確認（v0.1.16。ボトムバー / 行メニュー / トレイ / CLI） |
 | アプリ内更新（通知 → ダウンロード → 置き換え → 再起動） | ✅ 実装・実機確認（v0.1.15） |
 | 配布（GitHub Releases / install.ps1 / アイコン） | ✅ v0.1.10 から |
 | URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 |
+
+## 修正履歴（v0.1.16）
+
+- **新しいブラウザの認証 URL を発行**。dsh web が起動時に 1 回だけ出力する `?token=` 付き URL を、
+  ボトムバー「認証 URL」・ローカル行メニュー・トレイ・`dshl auth-url` から発行できるようにした。
+  - 取得元はランチャーが起動した dsh のログ（`%APPDATA%\DshLauncher\logs\<id>.log`）。
+    `dsh web: …?token=…` を新しい順に拾い、稼働中のサーバーが **3xx + `Set-Cookie: dsh-auth-…` を返す
+    ものだけ**を採用する（再起動前の古いトークンは 401 で捨てる。検証クライアントは Cookie を保持しない）
+  - ダイアログに公開 URL（Tailscale など）と「この PC のブラウザ用」（`127.0.0.1`）を並べ、
+    コピーと「ブラウザで開く」を用意。PID と注意書きも表示する
+  - CLI: `dshl auth-url [machine] [--copy] [--open] [--json]`（stdout は URL 1 行）
+  - PWA 自動認証の説明にあった「起動ログは排他ロックで読めない」を実測に合わせて訂正
+  - `docs/DEVELOPMENT.md` の制御文字（BEL）を修正
 
 ## 修正履歴（v0.1.15）
 
