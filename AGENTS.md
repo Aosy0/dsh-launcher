@@ -32,6 +32,10 @@ Windows 用の dsh（DeepSeek Harness）ランチャー。WPF/.NET 9 アプリ�
   署名クッキー（`dsh-auth-*`）を生成し、非表示のアプリウィンドウ＋一時ローカルページでブラウザに設定して開き直す。
   認証状態は `%APPDATA%\DshLauncher\pwa-auth.json` とウィンドウタイトルで判断する。対象は `127.0.0.1` の PWA のみ
   （dsh web の起動ログは実行中に排他ロックされるため、`?token=` URL の読み取りには頼らない）。
+- **アプリ内更新**: `Update.cs`。`releases/latest` を確認し、実行中の exe と同じ種類のアセットを
+  SHA256 検証してから、非表示 PowerShell ヘルパーで exe を差し替えて再起動する（インストーラは呼ばない）。
+  UI はステータスバーの「v<ver> に更新」とトレイ通知、CLI は `dshl update [--check]`。
+  更新先に書き込めない/別インスタンスが起動中なら実行しない。
 
 ## 詳細ドキュメント
 

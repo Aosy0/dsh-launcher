@@ -239,11 +239,20 @@ internal sealed class MainWindow : Window
     private string? _selectedId;
     private DateTime _lastRemoteRefresh = DateTime.MinValue;
     private DateTime _lastRefresh = DateTime.MinValue;
+    private DateTime _lastUpdateCheck = DateTime.MinValue;
     private bool _refreshing;
+    private bool _checkingUpdate;
+    private bool _updating;
+    private UpdateInfo? _update;
+    private readonly TextBlock _updateText = UiKit.Text("", 10.5, Theme.Positive, family: Theme.Mono);
+    private readonly Border _updateHost;
 
     public event Action? Refreshed;
+    public event Action<UpdateInfo>? UpdateFound;
 
     public LauncherConfig Config => _config;
+
+    public UpdateInfo? AvailableUpdate => _update;
 
     public MainWindow(LauncherConfig config, string? configPath)
     {
@@ -259,6 +268,17 @@ internal sealed class MainWindow : Window
         Background = Theme.Page;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         FontFamily = Theme.Sans;
+
+        _updateHost = new Border
+        {
+            Child = _updateText,
+            Cursor = Cursors.Hand,
+            Padding = new Thickness(6, 0, 0, 0),
+            Visibility = Visibility.Collapsed,
+        };
+        _updateHost.MouseLeftButtonUp += (_, _) => { if (_update is not null && !_updating) _ = InstallUpdateAsync(_update); };
+        _updateHost.MouseEnter += (_, _) => _updateText.Foreground = Theme.Text;
+        _updateHost.MouseLeave += (_, _) => _updateText.Foreground = Theme.Positive;
 
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -294,6 +314,7 @@ internal sealed class MainWindow : Window
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
         _timer.Tick += async (_, _) =>
         {
+            if (_updating) return;
             if (_busy.Count > 0)
             {
                 // Update only the elapsed text: rebuilding the list would restart
@@ -301,12 +322,114 @@ internal sealed class MainWindow : Window
                 UpdateBusyLabels();
                 return;
             }
+            if (!_checkingUpdate && (DateTime.UtcNow - _lastUpdateCheck).TotalHours >= 6)
+            {
+                _ = CheckForUpdatesAsync(manual: false, notify: true);
+            }
             if ((DateTime.UtcNow - _lastRefresh).TotalSeconds < 4) return;
             await RefreshAsync();
         };
         _timer.Start();
 
         Closed += (_, _) => _timer.Stop();
+
+        // Check for updates a few seconds after startup so the window comes up instantly.
+        _ = Task.Delay(TimeSpan.FromSeconds(6)).ContinueWith(_ =>
+            Dispatcher.Invoke(() => _ = CheckForUpdatesAsync(manual: false, notify: true)));
+    }
+
+    // ---------------------------------------------------------------- updates
+
+    internal void RequestUpdateCheck() => _ = CheckForUpdatesAsync(manual: true, notify: false);
+
+    /// <summary>Called from the tray balloon: re-uses the confirmation dialog and installs.</summary>
+    internal void InstallAvailableUpdate()
+    {
+        if (_update is not null && !_updating) _ = InstallUpdateAsync(_update);
+    }
+
+    private async Task CheckForUpdatesAsync(bool manual, bool notify)
+    {
+        if (_checkingUpdate || _updating) return;
+        _checkingUpdate = true;
+        _lastUpdateCheck = DateTime.UtcNow;
+        try
+        {
+            var info = await Updater.CheckAsync();
+            if (info is null)
+            {
+                if (manual)
+                {
+                    ConfirmWindow.Info(this, "更新", "最新バージョンを確認できませんでした。ネットワーク接続を確認してください。");
+                }
+                return;
+            }
+            if (!info.IsNewer)
+            {
+                _update = null;
+                UpdateUpdateUi();
+                if (manual) ConfirmWindow.Info(this, "更新", $"最新版です（{AppInfo.Version}）。");
+                return;
+            }
+            _update = info;
+            UpdateUpdateUi();
+            if (notify) UpdateFound?.Invoke(info);
+        }
+        finally
+        {
+            _checkingUpdate = false;
+        }
+    }
+
+    private void UpdateUpdateUi()
+    {
+        if (_updating) return;
+        if (_update is null)
+        {
+            _updateText.Text = "";
+            _updateHost.Visibility = Visibility.Collapsed;
+            return;
+        }
+        _updateText.Foreground = Theme.Positive;
+        _updateText.Text = $"v{_update.Version} に更新";
+        _updateHost.Visibility = Visibility.Visible;
+    }
+
+    private async Task InstallUpdateAsync(UpdateInfo info)
+    {
+        if (_updating) return;
+        var confirmed = ConfirmWindow.Ask(this, $"v{info.Version} に更新しますか",
+            "ダウンロードして検証したあと、アプリを終了して置き換え、新しいバージョンで再起動します。DSH 本体は停止しません。",
+            $"現在 {AppInfo.Version} → v{info.Version}\n{info.AssetName}",
+            "更新して再起動", "キャンセル");
+        if (!confirmed) return;
+
+        _updating = true;
+        _updateHost.Visibility = Visibility.Visible;
+        _statusProgress.Visibility = Visibility.Visible;
+        _updateText.Text = "ダウンロード準備…";
+        var progress = new Progress<(string Phase, double? Percent)>(value =>
+        {
+            _updateText.Foreground = Theme.Secondary;
+            _updateText.Text = value.Percent is double percent
+                ? $"{value.Phase} {percent:0}%"
+                : value.Phase;
+        });
+
+        var result = await Updater.InstallAsync(info, progress);
+        if (!result.Ok)
+        {
+            _updating = false;
+            _statusProgress.Visibility = Visibility.Collapsed;
+            UpdateUpdateUi();
+            ConfirmWindow.Info(this, "更新", result.Message);
+            return;
+        }
+
+        _updateText.Foreground = Theme.Secondary;
+        _updateText.Text = "再起動します…";
+        await Task.Delay(500);
+        Application.Current.Shutdown();
     }
 
     private Border BuildFilterRow()
@@ -371,15 +494,18 @@ internal sealed class MainWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.Children.Add(_summary);
+        Grid.SetColumn(_updateHost, 1);
+        grid.Children.Add(_updateHost);
         _statusProgress.Visibility = Visibility.Collapsed;
         _statusProgress.Margin = new Thickness(8, 0, 8, 0);
         var progressHost = new Grid { VerticalAlignment = VerticalAlignment.Center };
         progressHost.Children.Add(_statusProgress);
-        Grid.SetColumn(progressHost, 1);
+        Grid.SetColumn(progressHost, 2);
         grid.Children.Add(progressHost);
         var version = UiKit.Text(AppInfo.Version, 10.5, Theme.Muted, family: Theme.Mono);
-        Grid.SetColumn(version, 2);
+        Grid.SetColumn(version, 3);
         grid.Children.Add(version);
         return new Border
         {
@@ -875,7 +1001,28 @@ internal sealed class TrayIcon : IDisposable
         };
         _icon.DoubleClick += (_, _) => ShowWindow();
         _icon.ContextMenuStrip.Opening += (_, _) => BuildMenu();
+        _icon.BalloonTipClicked += (_, _) => _window.Dispatcher.Invoke(() => _window.InstallAvailableUpdate());
         window.Refreshed += BuildMenu;
+        window.UpdateFound += ShowUpdateBalloon;
+    }
+
+    private string? _notifiedVersion;
+
+    private void ShowUpdateBalloon(UpdateInfo info)
+    {
+        if (_notifiedVersion == info.Version) return;
+        _notifiedVersion = info.Version;
+        try
+        {
+            _icon.BalloonTipTitle = "DSH Launcher の更新";
+            _icon.BalloonTipText = $"v{info.Version} が利用可能です。クリックするとダウンロードとインストールを行います。";
+            _icon.BalloonTipIcon = WinForms.ToolTipIcon.Info;
+            _icon.ShowBalloonTip(10000);
+        }
+        catch
+        {
+            // Desktop notifications are best-effort.
+        }
     }
 
     private void ShowWindow()
@@ -927,6 +1074,15 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("ログ", null, (_, _) => ShowLogs(_window.Config.LocalMachine));
         menu.Items.Add("設定", null, (_, _) => Process.Start(new ProcessStartInfo(LauncherConfig.DefaultPath) { UseShellExecute = true }));
+        menu.Items.Add(new WinForms.ToolStripSeparator());
+        var update = _window.AvailableUpdate;
+        if (update is not null)
+        {
+            menu.Items.Add($"v{update.Version} に更新…", null, (_, _) =>
+                _window.Dispatcher.Invoke(() => _window.InstallAvailableUpdate()));
+        }
+        menu.Items.Add("更新を確認…", null, (_, _) =>
+            _window.Dispatcher.Invoke(() => _window.RequestUpdateCheck()));
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("終了", null, (_, _) => { _icon.Visible = false; Application.Current.Shutdown(); });
     }

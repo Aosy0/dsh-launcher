@@ -70,6 +70,7 @@ internal static class Cli
         public bool DryRun;
         public bool Install;
         public bool Open;
+        public bool Check;
         public string? Config;
         public int Lines = 50;
         public List<string> Positionals = new();
@@ -97,6 +98,7 @@ internal static class Cli
                 case "--dry-run": options.DryRun = true; break;
                 case "--install": options.Install = true; break;
                 case "--open": options.Open = true; break;
+                case "--check": options.Check = true; break;
                 case "--config" when i + 1 < args.Length: options.Config = args[++i]; break;
                 case "-n" when i + 1 < args.Length && int.TryParse(args[i + 1], out var lines):
                     options.Lines = lines; i++; break;
@@ -133,6 +135,7 @@ internal static class Cli
                 "remove" or "rm" => Remove(config, options, target),
                 "open" => Open(config, options, target),
                 "pwa" => Pwa(config, options),
+                "update" => Update(options),
                 "gui" => 0,
                 _ => Unknown(command),
             };
@@ -459,6 +462,83 @@ internal static class Cli
         return result.Ok ? 0 : 1;
     }
 
+    /// <summary>Checks GitHub Releases and updates this exe in place (restarting it).</summary>
+    private static int Update(Options options)
+    {
+        var info = Updater.CheckAsync().GetAwaiter().GetResult();
+        if (info is null)
+        {
+            Fail("最新バージョンを確認できませんでした（ネットワーク接続を確認してください）");
+            return 1;
+        }
+
+        if (!info.IsNewer)
+        {
+            if (options.Json)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    current = AppInfo.Version,
+                    latest = info.Version,
+                    available = false,
+                }, Json.Options));
+            }
+            else
+            {
+                Console.WriteLine($"最新版です（{AppInfo.Version}）");
+            }
+            return 2;
+        }
+
+        if (options.Check || options.DryRun)
+        {
+            if (options.Json)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    current = AppInfo.Version,
+                    latest = info.Version,
+                    available = true,
+                    asset = info.AssetName,
+                    assetBytes = info.AssetSize,
+                    url = info.AssetUrl,
+                    target = Updater.CurrentExePath,
+                }, Json.Options));
+            }
+            else
+            {
+                Console.WriteLine($"v{info.Version} が利用可能です（現在 {AppInfo.Version}）");
+                Console.WriteLine($"{info.AssetName}  {info.AssetSize / 1048576.0:0.0} MB");
+                if (options.DryRun) Console.WriteLine($"target: {Updater.CurrentExePath}");
+            }
+            return 0;
+        }
+
+        var progress = new Progress<(string Phase, double? Percent)>(value =>
+        {
+            if (value.Percent is double percent) Console.Error.Write($"\r{value.Phase} {percent:0}%   ");
+            else Console.Error.Write($"\r{value.Phase}   ");
+        });
+        var result = Updater.InstallAsync(info, progress).GetAwaiter().GetResult();
+        Console.Error.WriteLine();
+        if (options.Json)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                current = AppInfo.Version,
+                latest = info.Version,
+                asset = info.AssetName,
+                ok = result.Ok,
+                message = result.Message,
+            }, Json.Options));
+        }
+        else
+        {
+            Console.WriteLine(result.Ok ? result.Message : $"failed: {result.Message}");
+        }
+        return result.Ok ? 0 : 1;
+    }
+
     private static int Unknown(string command)
     {
         Fail($"unknown command: {command}");
@@ -504,6 +584,9 @@ usage:
                                 this PC's DSH as an installed browser web app (PWA):
                                 info, or --open to launch it (--dry-run prints the command line)
   dshl gui                      open the launcher window
+  dshl update [--check] [--dry-run] [--json]
+                                check GitHub Releases and update this exe in place
+                                (--check: report only; --dry-run: print the plan)
   --config <path>               use a different hosts.json
 
 exit codes: 0 ok / 1 error / 2 no change / 3 unreachable / 4 needs setup (helper / PWA)

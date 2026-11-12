@@ -66,7 +66,7 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | 設計・デザイン・決定事項 | [DESIGN.md](DESIGN.md) |
 | 開発・構成・障害対応 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 
-## 実装状況（v0.1.14 / 2026-11-12）
+## 実装状況（v0.1.15 / 2026-11-12）
 
 | 機能 | 状態 |
 |---|---|
@@ -83,8 +83,19 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 |
 | マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 |
 | PWA を開く（ブラウザの Web アプリ、マシン非依存） | ✅ 実装・実機確認（Chrome / Edge / Brave の Web アプリ検出、初回認証の自動化） |
+| アプリ内更新（通知 → ダウンロード → 置き換え → 再起動） | ✅ 実装・実機確認（v0.1.15） |
 | 配布（GitHub Releases / install.ps1 / アイコン） | ✅ v0.1.10 から |
 | URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 |
+
+## 修正履歴（v0.1.15）
+
+- **アプリ内更新を追加**。起動後と6時間ごとに GitHub Releases を確認し、新しければ
+  ステータスバーに「v0.1.15 に更新」、トレイに通知（バルーン）を出す。クリックすると
+  **ブラウザを開かずに**ダウンロード → SHA-256 検証 → 置き換え → 新しいバージョンで再起動まで行う。
+  - ダウンロードするのは実行中の exe と同じ種類（自己完結 / framework-dependent。exe サイズで判定）
+  - 置き換えは非表示の PowerShell ヘルパーが「本体の終了待ち → exe 差し替え → 起動」を行う
+  - 更新先に書き込めない場合・別のランチャーが起動中の場合は実行せず理由を表示
+  - トレイメニューに「更新を確認…」「v0.1.15 に更新…」、CLI に `dshl update [--check] [--dry-run] [--json]`
 
 ## 修正履歴（v0.1.14）
 
@@ -218,8 +229,13 @@ dshl start|stop|restart [machine] [--dry-run] [--json]
 dshl machines / url / logs / setup / rename / add / remove
 dshl open [machine] [--dry-run]
 dshl pwa [--open] [--dry-run] [--json]
+dshl update [--check] [--dry-run] [--json]
 dshl gui
 ```
+
+- **更新**: 新しいバージョンがあるとボトムバー上（ステータスバー）とトレイで通知する。
+  クリックでダウンロード・検証・差し替え・再起動まで自動（ブラウザは開かない）。
+  `dshl update --check` で確認だけ、`dshl update` で適用。
 
 - **PWA を開く**: ボトムバー右の「PWA を開く」、または `dshl pwa --open`。
   ブラウザの Web アプリ（このPCの DSH）を独立ウィンドウで開く。未インストールならインストール手順を案内する。
@@ -255,6 +271,7 @@ dsh-launcher/
 │  ├─ Remote.cs           # SSH・リモート検出/操作・ヘルパースクリプト
 │  ├─ BrowserApp.cs        # ブラウザの Web アプリ（PWA）の検出と起動（app id 算出・プロファイル走査）
 │  ├─ PwaAuth.cs           # PWA の初回認証（署名クッキーの発行・ブラウザへの設定・認証状態）
+│  ├─ Update.cs            # アプリ内更新（GitHub Releases 確認・検証・差し替え・再起動）
 │  ├─ Cli.cs              # dshl サブコマンド
 │  ├─ Ui.cs               # 一覧ウィンドウ・トレイ・テーマ
 │  └─ Dialogs.cs          # 確認・名前変更・マシン追加・ログ
