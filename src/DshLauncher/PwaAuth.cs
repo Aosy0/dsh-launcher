@@ -28,13 +28,15 @@ internal sealed class PwaAuthResult
 /// Browser authentication for the PWA ("PWA を開く").
 ///
 /// dsh web protects the UI with a signed HttpOnly cookie (`dsh-auth-&lt;hash of authority&gt;`) that is
-/// normally minted by opening the process-token URL printed at startup. The launcher cannot read
-/// that URL back while dsh is running (the redirected stdout file is exclusively locked), so it mints
-/// the same cookie from the persistent browser-session secret in `$DSH_HOME/.credentials.yaml`,
-/// installs it into the target browser profile through a short-lived local page inside a hidden app
-/// window, and remembers the auth state. Auth state is also checked live from the PWA window title:
-/// a 401 page is titled with the authority (e.g. "127.0.0.1:3080") while the authenticated UI carries
-/// the app name.
+/// normally minted by opening the process-token URL printed at startup. For the PWA the launcher
+/// mints the same cookie from the persistent browser-session secret in `$DSH_HOME/.credentials.yaml`
+/// instead of replaying that URL: the cookie is installed through a short-lived local page inside a
+/// hidden app window, so no extra tab or window is left behind and the one-time URL never lands in
+/// browser history.
+/// (The startup URL itself is read back from the launch log by <see cref="AuthUrls"/>, which issues
+/// a link for a new browser rather than authenticating this profile.)
+/// Auth state is also checked live from the PWA window title: a 401 page is titled with the
+/// authority (e.g. "127.0.0.1:3080") while the authenticated UI carries the app name.
 /// </summary>
 internal static class PwaAuth
 {

@@ -83,6 +83,7 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 | ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 |
 | マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 |
 | PWA を開く（ブラウザの Web アプリ、マシン非依存） | ✅ 実装・実機確認（Chrome / Edge / Brave の Web アプリ検出、初回認証の自動化） |
+| 新しいブラウザの認証 URL（`?token=` 付き）の発行 | ✅ 実装（未リリース。ボトムバー / 行メニュー / トレイ / CLI） |
 | アプリ内更新（通知 → ダウンロード → 置き換え → 再起動） | ✅ 実装・実機確認（v0.1.15） |
 | 配布（GitHub Releases / install.ps1 / アイコン） | ✅ v0.1.10 から |
 | URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 |
@@ -102,10 +103,11 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 - **PWA の初回認証を自動化**。「PWA を開く」で未認証（401 画面）を検知すると、
   DSH が発行するブラウザセッションクッキーを自動で発行してブラウザプロファイルに設定し、PWA を開き直す。
   - dsh web は署名つき HttpOnly クッキー（`dsh-auth-*`）で UI を保護する。通常は起動時に表示される
-    `?token=` 付き URL を開いて取得するが、dsh 実行中はその出力ログが排他ロックされていて読めない。
-    そこで `$DSH_HOME/.credentials.yaml` の browser-session secret から**同じクッキーを再生成**し、
+    `?token=` 付き URL を開いて取得するが、PWA の自動認証では**その URL を開き直さない**。
+    `$DSH_HOME/.credentials.yaml` の browser-session secret から**同じクッキーを再生成**し、
     ランチャーの一時ローカルページ（`http://127.0.0.1:<ephemeral>/`、クッキーはポート非依存）経由で
-    ブラウザに設定する。設定先は**非表示のアプリウィンドウ**なので、タブやウィンドウは残らない。
+    ブラウザに設定する。設定先は**非表示のアプリウィンドウ**なので、タブやウィンドウは残らず、
+    ワンタイムの URL も履歴に残らない。
   - 認証済みかどうかは、PWA のウィンドウタイトル（401 は `127.0.0.1:3080`、認証済みはアプリ名）と
     `%APPDATA%\DshLauncher\pwa-auth.json`（ブラウザ・プロファイル・有効期限）で判断する。
   - 自動認証は `http://127.0.0.1:<port>` からインストールした PWA が対象（クッキーを設定できるループバック限定）。
@@ -229,6 +231,7 @@ dshl start|stop|restart [machine] [--dry-run] [--json]
 dshl machines / url / logs / setup / rename / add / remove
 dshl open [machine] [--dry-run]
 dshl pwa [--open] [--dry-run] [--json]
+dshl auth-url [machine] [--copy] [--open] [--json]
 dshl update [--check] [--dry-run] [--json]
 dshl gui
 ```
@@ -244,6 +247,20 @@ dshl gui
   `%APPDATA%\DshLauncher\pwa-auth.json` に保存する。
   `dshl pwa --json` で、起動に使うブラウザ（`browser`）・検出したブラウザ一覧（`browsers`）・
   認証状態（`authenticated`）・自動認証の可否（`authAvailable`）を確認できる。
+
+- **認証 URL**: ボトムバーの「認証 URL」、ローカル行の右クリック →「認証 URL を発行…」、
+  トレイの「認証 URL を発行…」、または `dshl auth-url`。**新しいブラウザ**（別プロファイル・別端末）を
+  DSH に認証する `?token=` 付き URL を発行する。
+  - 取得元はランチャーが起動した dsh のログ（`%APPDATA%\DshLauncher\logs\<id>.log`）。
+    起動時に dsh web が 1 回だけ出力する `dsh web: …?token=…` を新しい順に拾い、
+    **稼働中のサーバーが 3xx（`Set-Cookie: dsh-auth-…` 付き）を返すものだけ**を採用する
+    （再起動前の古い行は 401 で捨てる）。検証クライアントは Cookie を保持しない。
+  - 表示する URL は、`hosts.json` の `url`（設定されていれば）、無ければログの URL が公開アドレスならそれ、
+    それも無ければ `http://127.0.0.1:<port>/`。トークンは authority に依存しないので、同じ DSH なら
+    ループバックでも公開 URL（Tailscale など）でも使える。ダイアログは両方を「コピー」「ブラウザで開く」付きで出す。
+  - URL は認証情報。ランチャー自身はトークンをファイルに保存しない（表示・コピー・CLI の stdout/JSON のみ）。
+    DSH を再起動すると URL は変わる。
+  - 対象はランチャー経由で起動したローカル DSH（リモートは未対応）。
 
 - 設定: `%APPDATA%\DshLauncher\hosts.json`（秘密情報なし。SSH は `~/.ssh/config` のエイリアスを使用）
 - ローカル起動は **タスクスケジューラ経由**（`DshLauncher\start-<id>`）。サーバーがランチャーの
@@ -271,6 +288,7 @@ dsh-launcher/
 │  ├─ Remote.cs           # SSH・リモート検出/操作・ヘルパースクリプト
 │  ├─ BrowserApp.cs        # ブラウザの Web アプリ（PWA）の検出と起動（app id 算出・プロファイル走査）
 │  ├─ PwaAuth.cs           # PWA の初回認証（署名クッキーの発行・ブラウザへの設定・認証状態）
+│  ├─ AuthUrl.cs           # 新しいブラウザの認証 URL（起動ログの ?token= を検証して発行）
 │  ├─ Update.cs            # アプリ内更新（GitHub Releases 確認・検証・差し替え・再起動）
 │  ├─ Cli.cs              # dshl サブコマンド
 │  ├─ Ui.cs               # 一覧ウィンドウ・トレイ・テーマ

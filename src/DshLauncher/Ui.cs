@@ -471,6 +471,9 @@ internal sealed class MainWindow : Window
         var add = UiKit.Quiet("+ マシンを追加", AddMachine);
         grid.Children.Add(add);
         var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        // Both actions belong to this PC's DSH, not to an SSH machine row.
+        right.Children.Add(UiKit.Button("認証 URL", false, IssueLocalAuthUrl, 28, 11.5));
+        right.Children.Add(new Border { Width = 8 });
         // The PWA belongs to this PC, not to a machine row: keep it a single, always-visible action.
         right.Children.Add(UiKit.Button("PWA を開く", true, OpenPwa, 28, 11.5));
         right.Children.Add(new Border { Width = 16 });
@@ -720,6 +723,7 @@ internal sealed class MainWindow : Window
         }
         Item("名前を変更…", () => Rename(machine));
         Item("ブラウザで開く", () => OpenUrl(machine));
+        if (machine.Kind == MachineKind.Local) Item("認証 URL を発行…", IssueLocalAuthUrl);
         menu.Items.Add(new Separator());
         Item("起動", () => Act(machine, "start", false));
         Item("再起動", () => Act(machine, "restart", true));
@@ -900,6 +904,7 @@ internal sealed class MainWindow : Window
     private async void OpenPwa() => await OpenPwaAsync();
 
     private bool _pwaOpening;
+    private bool _authOpening;
 
     /// <summary>Opens the PWA and mints a browser session first when the profile is not authenticated.</summary>
     internal async Task OpenPwaAsync()
@@ -948,6 +953,39 @@ internal sealed class MainWindow : Window
         try { Process.Start(new ProcessStartInfo(LauncherConfig.DefaultPath) { UseShellExecute = true }); }
         catch (Exception error) { ConfirmWindow.Info(this, "設定", error.Message); }
     }
+
+    /// <summary>Issues the `?token=` URL that authenticates a new browser against a running DSH.</summary>
+    private async Task IssueAuthUrlAsync(Machine machine)
+    {
+        if (_authOpening) return;
+        _authOpening = true;
+        try
+        {
+            AuthUrlInfo info;
+            try
+            {
+                info = await AuthUrls.IssueAsync(machine);
+            }
+            catch (Exception error)
+            {
+                ConfirmWindow.Info(this, "新しいブラウザの認証 URL", error.Message);
+                return;
+            }
+            if (!info.Ok)
+            {
+                ConfirmWindow.Info(this, "新しいブラウザの認証 URL", info.Message);
+                return;
+            }
+            AuthUrlWindow.Show(this, machine, info);
+        }
+        finally
+        {
+            _authOpening = false;
+        }
+    }
+
+    /// <summary>Bottom bar / tray / local row entry: this PC's DSH only.</summary>
+    internal void IssueLocalAuthUrl() => _ = IssueAuthUrlAsync(_config.LocalMachine);
 
     private void AddMachine()
     {
@@ -1044,6 +1082,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(_header);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("PWA を開く", null, (_, _) => OpenPwa());
+        menu.Items.Add("認証 URL を発行…", null, (_, _) => _window.Dispatcher.Invoke(() => _window.IssueLocalAuthUrl()));
         menu.Items.Add(new WinForms.ToolStripSeparator());
 
         var pinned = statuses

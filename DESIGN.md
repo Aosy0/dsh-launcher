@@ -177,10 +177,10 @@ Chromium 系ブラウザの「アプリとしてインストール」で作っ�
 - **未インストール時**: 勝手にインストールしない。案内ダイアログを出し、「ブラウザで開く」で
   既定のブラウザに URL を開く。
 - **初回認証（v0.1.14）**: DSH の Web UI は署名つき HttpOnly クッキー（`dsh-auth-<authority の SHA-256>`）で保護される。
-  dsh web は起動時に `?token=` 付き URL を表示するが、その出力（ランチャーが捕捉するログ）は dsh 実行中に
-  排他ロックされて読めない。そこで **`$DSH_HOME/.credentials.yaml` の browser-session secret から
-  同じクッキーを再生成**し、`127.0.0.1` の一時ページ（クッキーはポート非依存）を
-  **非表示のアプリウィンドウ**で開いて設定する（タブ・ウィンドウは残らない）。設定前にサーバーへ
+  dsh web は起動時に `?token=` 付き URL を表示する。PWA の自動認証はその URL を開き直すのではなく、
+  **`$DSH_HOME/.credentials.yaml` の browser-session secret から同じクッキーを再生成**し、
+  `127.0.0.1` の一時ページ（クッキーはポート非依存）を**非表示のアプリウィンドウ**で開いて設定する
+  （タブ・ウィンドウは残らず、ワンタイムの URL も履歴に残らない）。設定前にサーバーへ
   Cookie ヘッダで 200 を確認する。対象は `http://127.0.0.1:<port>` の PWA（ループバック限定）。
 - **認証状態の判断**: PWA のウィンドウタイトル（401 は authority 表示、認証済みはアプリ名を含む）と、
   `%APPDATA%\DshLauncher\pwa-auth.json`（ブラウザ・プロファイル・authority・有効期限）の両方で判断する。
@@ -193,6 +193,32 @@ Chromium 系ブラウザの「アプリとしてインストール」で作っ�
   認証だけは dsh のクッキー仕様に依存するため、対象をループバック PWA に限定し、失敗時は従来どおり
   案内にフォールバックする。
 
+### 5.8 新しいブラウザの認証 URL（`AuthUrl.cs`）
+
+PWA の自動認証（5.7）はこの PC の PWA プロファイルだけを対象にした。別のブラウザ・別プロファイル・
+別端末（Tailscale 経由など）には、dsh web が起動時に 1 回だけ出力する `?token=` 付き URL を渡す。
+
+- **トークンの性質**: dsh web は **プロセスごとにランダムな 32 バイト**の launch token を作り、
+  `dsh web: <url>?token=...` を起動時に 1 回出力する（`printUrl` 既定 true）。トークンは永続化されず、
+  その URL を開くと authority 単位の署名クッキーが発行される。**再起動すると URL は変わり、古いトークンは 401**。
+- **取得元**: ランチャーが起動した dsh のログ（`%APPDATA%\DshLauncher\logs\<id>.log`）。
+  起動スクリプトは `>>` 追記リダイレクトなので、実行中も `FileShare.ReadWrite` で読める。
+  末尾 256 KB から `dsh web: <url>` を新しい順に最大 6 件拾い、`token` クエリを
+  `http://127.0.0.1:<port>/?token=…` に投げ、**3xx かつ `Set-Cookie: dsh-auth-…` が付くものだけ**を採用する
+  （再起動前の行は 401 で落ちる）。検証クライアントは **Cookie を保持しない**: サーバーは有効な Cookie が
+  付いたリクエストも 303 で通すため、保持すると古いトークンを有効と誤認する。起動直後は最大 2.5 秒だけ再試行する。
+- **表示する URL**: `hosts.json` の `url` が設定されていればそれ、無ければログの URL が非ループバック
+  （`--public-url` で起動した場合など）ならそれ、それも無ければ `http://127.0.0.1:<port>/`。
+  トークンは authority に依存しないため、同じプロセスならループバックでも公開 URL でも有効。
+  ダイアログは主 URL と「この PC のブラウザ用」を並べ、それぞれコピーできる。
+- **UI / CLI**: ボトムバー「認証 URL」、ローカル行の右クリック、トレイの「認証 URL を発行…」。
+  ダイアログは URL のコピーと既定ブラウザでの起動、PID の表示。CLI は
+  `dshl auth-url [machine] [--copy] [--open] [--json]`（stdout は URL 1 行）。
+- **安全**: URL は認証情報そのもの。ランチャーはトークンをファイルに保存せず、画面・クリップボード・
+  CLI の stdout/JSON に出すだけ。ダイアログにも注意書きを出す。
+- **制限**: ランチャー経由で起動したローカル DSH のみ（リモートのヘルパーは `dsh.log` を持つが、
+  URL の妥当性検証に SSH 経由の HTTP 確認が要るため今回は未対応）。`printUrl: false` の構成では発行できない。
+
 ## 6. CLI（`dshl`、GUI と同一 exe）
 
 ```
@@ -204,6 +230,8 @@ dshl logs [machine] [-n 50]
 dshl setup <machine>          # ヘルパー配置のみ
 dshl open [machine] [--dry-run]              # 既定ブラウザで URL を開く
 dshl pwa [--open] [--dry-run] [--json]       # PWA（ブラウザの Web アプリ）の情報 / 起動
+dshl auth-url [machine] [--copy] [--open] [--json]
+                                             # 新しいブラウザを認証する ?token= URL の発行
 ```
 
 - `--dry-run` は実行するコマンド（受領書と同じ行）を出力して終了。
@@ -253,6 +281,10 @@ v1 への指摘「機能に対してウィンドウが贅沢（リッチすぎ�
 - PWA を開く: **マシン非依存**でボトムバー右＋トレイ最上位（名前は「PWA を開く」、UI は「ブラウザ」表記）。
   URL → app id を二重 SHA-256 で算出し、Chromium 系ブラウザ（Chrome / Edge / Brave / Chromium）から
   検出した Web アプリを同梱の proxy exe で起動する。未インストール時は案内のみ（5.7）
+- 新しいブラウザの認証 URL: 起動ログの `dsh web: …?token=…` を拾い、**稼働中のサーバーが 3xx
+  （`Set-Cookie: dsh-auth-…` 付き）を返すものだけ**を発行する（5.8）。検証クライアントは Cookie を保持しない。
+  トークンはファイルに保存せず、外部 URL とループバック URL の両方を出す。
+  対象はランチャー経由で起動したローカル DSH のみ。
 - 配布: GitHub Releases（自己完結 exe を推奨 ＋ framework-dependent 軽量版、`install.ps1`、SHA256SUMS）。
   `v*` タグ push で Actions がビルドして Release を作成する（12）
 - アプリ内更新: `releases/latest` を確認してトレイ/ステータスバーに通知し、クリックで同じ種類のアセットを

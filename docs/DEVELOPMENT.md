@@ -23,6 +23,7 @@ dsh-launcher/
 │  ├─ Remote.cs              # SSH、リモート検出/操作、agent.sh / agent.ps1
 │  ├─ BrowserApp.cs          # ブラウザの Web アプリ（PWA）検出・起動（app id 算出、プロファイル走査）
 │  ├─ PwaAuth.cs             # PWA の初回認証（署名クッキー発行・ブラウザ設定・認証状態）
+│  ├─ AuthUrl.cs             # 新しいブラウザの認証 URL（起動ログの ?token= をクッキー発行で検証して発行）
 │  ├─ Update.cs               # アプリ内更新（Releases 確認・SHA256 検証・exe 差し替え・再起動）
 │  ├─ Setup.cs               # RemoteSetup/SetupScripts（Node+dsh 導入）、Ps1Encoding(BOM)
 │  ├─ Cli.cs                 # dshl サブコマンド、MachineOps
@@ -119,8 +120,9 @@ dotnet publish -c Release -r win-x64 --self-contained false `
     - 検出結果は `dshl pwa --json`（`browser` / `browsers`） / `dshl pwa --dry-run` で確認できる。
 12. **PWA の初回認証はクッキー再生成で自動化**（`PwaAuth.cs`）:
     - DSH の Web UI は `dsh-auth-<authority の SHA-256>` という署名つき HttpOnly クッキーで保護される
-      （`@deepseek-ai/dsh-client-connection` の browser-session）。dsh web の起動時ログ（`?token=` 付き URL）は
-      **dsh 実行中に排他ロックされていて読めない**ため、ログからトークンを取る方式は使えない。
+      （`@deepseek-ai/dsh-client-connection` の browser-session）。通常は dsh web の起動時ログ（`?token=` 付き URL）
+      を開いて取得するが、PWA の自動認証は「401 を待ってから URL を開き直す」ことを避けるため、このログには依存しない
+      （ログは `>>` 追記なので実行中も読める。URL が要る用途は 14 の `AuthUrl.cs`）。
     - 代わりに `$DSH_HOME/.credentials.yaml` の `client-connection/browser-session` secret から
       **同じ形式のクッキーを生成**し、サーバーへ Cookie ヘッダで 200 を確認してから、
       `127.0.0.1` の一時 HTTP サーバー（`Set-Cookie` + DSH へ 302）を**非表示のアプリウィンドウ**で開いて設定する。
@@ -140,6 +142,18 @@ dotnet publish -c Release -r win-x64 --self-contained false `
       Start-Process」を行う。アプリはヘルパー起動後に終了する。インストーラは呼ばない（ポータブル配置でも更新できる）。
     - 事前条件: 更新先に書き込めること、同じ exe の別インスタンスが無いこと。満たさなければ理由を返す。
     - 更新確認の失敗はサイレント（手動確認時のみダイアログ）。UI はステータスバーのリンクとトレイのバルーン/メニュー。
+14. **新しいブラウザの認証 URL は起動ログ + クッキー発行の確認**（`AuthUrl.cs`）:
+    - dsh web の launch token はプロセスごとの乱数で、永続化されない。起動時に
+      `dsh web: <url>?token=...` として 1 回だけ stdout に出る（`printUrl` 既定 true）。
+    - ランチャーの起動スクリプトは `>>` 追記なので、実行中も `FileShare.ReadWrite` でログを読める。
+      末尾 256 KB から `dsh web: <url>` を新しい順に最大 6 件拾う。
+    - 再起動前のトークンもログに残るため、**必ず実行中サーバーへ `http://127.0.0.1:<port>/?token=…` を投げて
+      3xx + `Set-Cookie: dsh-auth-…` を確認**する（古いトークンは 401）。これを省くと再起動後に古い URL を配ってしまう。
+    - 検証クライアントは **Cookie を保持しない**（`UseCookies = false`）。サーバーは有効な Cookie 付きの
+      リクエストも 303 で通すため、保持すると再起動前の古いトークンを有効と誤認する。
+    - トークンは authority に依存しない。主 URL は `hosts.json` の `url` → ログの非ループバック URL →
+      `http://127.0.0.1:<port>/` の順で決め、ループバック版も併記する。
+    - トークンはファイルへ保存しない。UI/CLI の出力が唯一の配布経路（ダイアログにも注意書き）。
 ## テスト手順（本番 3080 を触らない）
 
 1. テスト設定を作る（別 DSH_HOME・別ポート）:
@@ -168,10 +182,21 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 
 7. アプリ内更新の検証（リリースを汚さない）:
    - dotnet publish ... -p:Version=0.1.0 -o %TEMP%\dshl-update-test で**古いバージョン番号のコピー**を作る
-   - dshl.exe update --check --json で vailable: true と選ばれる asset を確認
+   - dshl.exe update --check --json で available: true と選ばれる asset を確認
    - dshl.exe update でダウンロード → SHA256 検証 → 差し替え → 再起動（--version が最新になる）を確認
    - GUI はコピーを起動し、6秒後にステータスバー/トレイに通知が出ることを確認。リンクを押すと確認ダイアログ → 更新 → 再起動
    - 検証後は %TEMP%\dshl-update-test のプロセスを止めて削除する
+8. 新しいブラウザの認証 URL:
+   - `dshl auth-url --json` が `ok` / `url` / `localUrl` / `externalUrl` / `token` / `pid` / `message` を返す（稼働中のローカル DSH）
+   - `dshl auth-url` の stdout は URL 1 行（パイプで受ける）。`--copy` / `--open` は副作用あり
+   - 失敗系の見分け: 停止中 →「DSH が停止しています」、ログに起動行なし →「取得できません」、
+     古いトークンだけ（別プロセスのログを使う等）→「古くなっています」
+   - 古いトークンの検証は、`logs\<別id>.log` に過去の `dsh web:` 行がある状態で、その id のローカル設定を
+     稼働中ポートに向けると 401 判定を再現できる
+   - GUI はボトムバー「認証 URL」を `InvokePattern` で押し、ダイアログの URL・コピー・「ブラウザで開く」を確認
+     （ダイアログは `PrintWindow(hwnd, hdc, 2)` で撮る）
+9. 認証 URL の実効性: 返った URL を Cookie の無いブラウザプロファイルで開き、DSH の画面（401 でない）に
+   なることを確認する。同じ URL を再び開いても 303 で通る（トークンは使い捨てではない）。
 ## トラブルシュート
 
 | 症状 | 対処 |
@@ -184,12 +209,14 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 | タスクが Running のまま残る | 旧ビルド（cmd 直接起動）の残り。停止/再起動で掃除される |
 | 「PWA が見つかりません」 | `dshl pwa --json` で `browser` / `browsers` / appId / profile を確認。各ブラウザのプロファイル（例 Chrome: `%LOCALAPPDATA%\Google\Chrome\User Data\Profile N\Web Applications\_crx_<id>`、Edge は `_crx__<id>`）に実フォルダがあるか。ローカル DSH の URL（host/port）がインストール時と一致しているか |
 | 「認証を更新しましたが、PWA が認証状態になりません」 | `dshl pwa --json` の `authAvailable` と `%APPDATA%\DshLauncher\pwa-auth.json` を確認。`$DSH_HOME/.credentials.yaml` に `client-connection/browser-session` があるか、PWA を `http://127.0.0.1:<port>` からインストールしたか（https オリジンは自動認証の対象外）。DSH 再起動後に再試行 |
+| 「認証 URL」を発行できない | `dshl auth-url --json` の `message` を確認。停止中なら起動する。ログ（`logs\<id>.log`）に `dsh web: …?token=…` があるか（`printUrl: false` だと出ない）、ランチャー経由で起動したか。再起動前の古い URL は 401 になる（`AuthUrl.cs` は 3xx + `Set-Cookie: dsh-auth-…` で検証して選ぶ） |
 
 | 更新が「別の DSH Launcher が起動中」で止まる | 他のランチャー（トレイ常駐）を終了してから再実行。同一 exe がロックされている |
 | 更新後に起動しない | %TEMP%\dshl-update-* の状態を確認。exe が差し替わっていれば手動起動で復帰可能。ウイルス対策が exe をロックしていないか確認 |
 ## 既知の未対応
 
 - URL（Tailscale）の設定 UI（今は `hosts.json` の `url` を直接編集）
+- リモートマシンの認証 URL 発行（今はローカル DSH のみ。リモートは `dsh.log` の取得と、SSH 経由の応答確認が要る）
 - 9台以上での絞り込み欄の表示テスト（実装済みだが未検証）
 - GUI からのリモートセットアップ実行の実機確認（CLI では検証済み）
 - アプリ終了時にトレイを残すか終了するかの設定

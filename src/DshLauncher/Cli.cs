@@ -70,6 +70,7 @@ internal static class Cli
         public bool DryRun;
         public bool Install;
         public bool Open;
+        public bool Copy;
         public bool Check;
         public string? Config;
         public int Lines = 50;
@@ -98,6 +99,7 @@ internal static class Cli
                 case "--dry-run": options.DryRun = true; break;
                 case "--install": options.Install = true; break;
                 case "--open": options.Open = true; break;
+                case "--copy": options.Copy = true; break;
                 case "--check": options.Check = true; break;
                 case "--config" when i + 1 < args.Length: options.Config = args[++i]; break;
                 case "-n" when i + 1 < args.Length && int.TryParse(args[i + 1], out var lines):
@@ -135,6 +137,7 @@ internal static class Cli
                 "remove" or "rm" => Remove(config, options, target),
                 "open" => Open(config, options, target),
                 "pwa" => Pwa(config, options),
+                "auth-url" or "token" => AuthUrl(config, options, target),
                 "update" => Update(options),
                 "gui" => 0,
                 _ => Unknown(command),
@@ -462,6 +465,58 @@ internal static class Cli
         return result.Ok ? 0 : 1;
     }
 
+    /// <summary>Issues the `?token=` URL that authenticates a new browser (local DSH only).</summary>
+    private static int AuthUrl(LauncherConfig config, Options options, string? target)
+    {
+        var machine = Resolve(config, target);
+        var info = AuthUrls.IssueAsync(machine).GetAwaiter().GetResult();
+
+        if (info.Ok)
+        {
+            if (options.Copy) CopyToClipboard(info.Url);
+            if (options.Open) OpenInBrowser(info.Url);
+        }
+
+        if (options.Json)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                machine = machine.Id,
+                ok = info.Ok,
+                url = info.Url,
+                localUrl = info.LocalUrl,
+                externalUrl = info.ExternalUrl,
+                token = info.Token,
+                pid = info.Pid,
+                message = info.Message,
+            }, Json.Options));
+            return info.Ok ? 0 : 1;
+        }
+
+        if (!info.Ok)
+        {
+            Fail(info.Message);
+            return 1;
+        }
+
+        Console.WriteLine(info.Url);
+        return 0;
+    }
+
+    private static void CopyToClipboard(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        try { System.Windows.Clipboard.SetText(text); }
+        catch (Exception error) { Fail($"cannot copy the URL: {error.Message}"); }
+    }
+
+    private static void OpenInBrowser(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception error) { Fail($"cannot open the browser: {error.Message}"); }
+    }
+
     /// <summary>Checks GitHub Releases and updates this exe in place (restarting it).</summary>
     private static int Update(Options options)
     {
@@ -583,6 +638,9 @@ usage:
   dshl pwa [--open] [--dry-run] [--json]
                                 this PC's DSH as an installed browser web app (PWA):
                                 info, or --open to launch it (--dry-run prints the command line)
+  dshl auth-url [machine] [--copy] [--open] [--json]
+                                issue the ?token= URL that authenticates a new browser
+                                (this PC's DSH; the URL is valid while dsh runs)
   dshl gui                      open the launcher window
   dshl update [--check] [--dry-run] [--json]
                                 check GitHub Releases and update this exe in place

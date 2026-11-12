@@ -2,6 +2,7 @@ using System.IO;
 using System.Threading;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -123,6 +124,96 @@ internal sealed class ConfirmWindow : DialogBase
     {
         var dialog = new ConfirmWindow(title, body, null, "閉じる", null) { Owner = owner };
         dialog.ShowDialog();
+    }
+}
+
+/// <summary>
+/// Shows the `?token=` URL that authenticates a new browser, with the external and loopback
+/// spellings of the same token. The URL is a credential: it is only ever shown or copied,
+/// never written to the launcher's files.
+/// </summary>
+internal sealed class AuthUrlWindow : DialogBase
+{
+    private AuthUrlWindow(Machine machine, AuthUrlInfo info) : base("新しいブラウザの認証 URL", 480)
+    {
+        var stack = new StackPanel { Margin = new Thickness(16, 14, 16, 14) };
+        stack.Children.Add(UiKit.Text("新しいブラウザの認証 URL", 13.5, Theme.Text, FontWeights.Medium));
+
+        var body = UiKit.Selectable(
+            $"{machine.DisplayName} の DSH に新しいブラウザを認証します。この URL を開くとそのブラウザが認証され、以降は通常の URL で使えます。URL は DSH の起動中にだけ発行でき、再起動すると変わります。",
+            12, Theme.Secondary);
+        body.Margin = new Thickness(0, 7, 0, 0);
+        stack.Children.Add(body);
+
+        var url = info.Url!;
+        stack.Children.Add(UrlRow("認証 URL", url));
+        if (info.ExternalUrl is not null && info.LocalUrl is not null &&
+            !info.ExternalUrl.Equals(info.LocalUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            stack.Children.Add(UrlRow("この PC のブラウザ用", info.LocalUrl));
+        }
+
+        var note = UiKit.Text("URL には認証情報が含まれます。必要な相手にだけ渡してください。", 10.5, Theme.Muted);
+        note.Margin = new Thickness(0, 12, 0, 0);
+        stack.Children.Add(note);
+
+        var footer = new Grid { Margin = new Thickness(0, 14, 0, 0) };
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var pid = UiKit.Text(info.Pid is int value ? $"PID {value}" : "", 10.5, Theme.Muted, family: Theme.Mono);
+        pid.VerticalAlignment = VerticalAlignment.Center;
+        footer.Children.Add(pid);
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+        buttons.Children.Add(UiKit.Button("閉じる", false, Close, 28, 12));
+        buttons.Children.Add(new Border { Width = 6 });
+        buttons.Children.Add(UiKit.Button("ブラウザで開く", true, () => OpenInBrowser(url), 28, 12));
+        Grid.SetColumn(buttons, 1);
+        footer.Children.Add(buttons);
+        stack.Children.Add(footer);
+
+        Content = Frame(stack);
+        KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
+    }
+
+    private static Border UrlRow(string label, string url)
+    {
+        var stack = new StackPanel();
+        stack.Children.Add(UiKit.Text(label, 10.5, Theme.Muted));
+
+        var row = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var text = UiKit.Text(url, 10.5, Theme.Text, family: Theme.Mono);
+        text.TextTrimming = TextTrimming.None;
+        text.TextWrapping = TextWrapping.Wrap;
+        text.Margin = new Thickness(0, 0, 8, 0);
+        row.Children.Add(text);
+        var copy = UiKit.Quiet("コピー", () => Copy(url), 10.5);
+        copy.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(copy, 1);
+        row.Children.Add(copy);
+        stack.Children.Add(row);
+
+        var box = UiKit.Surface(stack, 7, Theme.Page, Theme.Line, new Thickness(10, 8, 10, 8));
+        box.Margin = new Thickness(0, 12, 0, 0);
+        return box;
+    }
+
+    private static void Copy(string url)
+    {
+        try { Clipboard.SetText(url); } catch { /* clipboard access is best-effort */ }
+    }
+
+    private static void OpenInBrowser(string url)
+    {
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch { /* opening the browser is best-effort */ }
+    }
+
+    public static void Show(Window owner, Machine machine, AuthUrlInfo info)
+    {
+        new AuthUrlWindow(machine, info) { Owner = owner }.ShowDialog();
     }
 }
 
