@@ -5,11 +5,13 @@ Windows 用の dsh（DeepSeek Harness）ランチャー。WPF/.NET 9 アプリ�
 
 ## 必ず守ること
 
-- **バージョン**: 変更したら `src/DshLauncher/DshLauncher.csproj` の `<Version>` を上げ、
-  `dist\dshl.exe` を更新する（画面右下と `dshl --version` はアセンブリ由来）。
-- **リリース**: 配布物は GitHub Actions（`.github/workflows/release.yml`）が `v*` タグ push で作る。
-  タグ `vX.Y.Z` は csproj の `<Version>` と一致させる（不一致はワークフローが失敗）。手順は
-  docs/DEVELOPMENT.md「リリース」。アイコンは `src/DshLauncher/app.ico`（`python tools/make-icon.py` で生成、直接編集しない）。
+- **バージョン**: `<Version>` の更新と `dist\dshl.exe` の更新は**リリースを指示されたときだけ**
+  行う（画面右下と `dshl --version` はアセンブリ由来）。通常の不具合修正ではバージョンを上げない。
+- **リリース**: ユーザーが明示的にリリースを指示したときだけ行う。配布物は GitHub Actions
+  （`.github/workflows/release.yml`）が `v*` タグ push で作る。タグ `vX.Y.Z` は csproj の
+  `<Version>` と一致させる（不一致はワークフローが失敗）。手順は docs/DEVELOPMENT.md「リリース」。
+  タグ push と GitHub Release は DSH の push ガードで確認されるため、承認なしに実行しない。
+  アイコンは `src/DshLauncher/app.ico`（`python tools/make-icon.py` で生成、直接編集しない）。
 - **名称とライセンス**: 本プロジェクトは **MIT**。非公式ツールであることを README と Release 本文に明記する。
   プロジェクト名は「DSH」、フルネーム「DeepSeek Harness」は互換性の説明にのみ使う
   （上流 https://github.com/deepseek-ai/deepseek-harness/blob/master/BRAND_GUIDELINES.md に従う）。
