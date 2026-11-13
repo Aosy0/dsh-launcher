@@ -1,21 +1,45 @@
 # DSH Launcher
 
-DeepSeek Harness（dsh）を、このPCとリモートマシンで起動・再起動・停止・状態確認するための
-Windows デスクトップアプリ（WPF / .NET 9）＋ CLI（`dshl`）。同じ exe が GUI と CLI を兼ねる。
-
-macOS 版（SwiftUI メニューバーアプリ＋CLI）も同じリポジトリの [mac/](mac/README.md) にあります。
+DeepSeek Harness（`dsh`）を、この PC とリモートマシンで起動・再起動・停止・状態確認するための
+デスクトップアプリ＋ CLI（`dshl`）。Windows 版は WPF / .NET 9、macOS 版は SwiftUI / AppKit で、
+**同じバージョン（v0.1.16）と同じ CLI 語彙**を提供します。プラットフォームごとの違いはこの
+README 内に併記しています。
 
 > 非公式のサードパーティ製ランチャーです。DeepSeek 公式の製品ではなく、DeepSeek による承認・提携・サポートはありません。
 > 「DeepSeek Harness」は DeepSeek の登録商標で、本プロジェクトでは互換性の説明にのみ使用しています。
 > 詳細は [ライセンスと非公式について](#ライセンスと非公式について)。
 
-![actual UI](design/v3/24-gui-pwa.png)
+![Windows UI](design/v3/24-gui-pwa.png)
+
+![macOS UI](design/mac-v1.png)
+
+## ドキュメント
+
+| 内容 | 場所 |
+|---|---|
+| セッション引き継ぎ（エージェント向け） | [AGENTS.md](AGENTS.md) |
+| 設計・デザイン・決定事項 | [DESIGN.md](DESIGN.md) |
+| 開発・ビルド・テスト・障害対応 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
+
+## プラットフォームの違い
+
+| | Windows | macOS |
+|---|---|---|
+| UI | 一覧ウィンドウ＋トレイ常駐（WPF） | 一覧ウィンドウ＋メニューバー常駐（SwiftUI + AppKit） |
+| ローカル起動 | タスクスケジューラ＋`wscript` の非表示起動 | ユーザー LaunchAgent（`RunAtLoad` 無効＋`kickstart`） |
+| リモート操作 | SSH＋`agent.sh` / `agent.ps1` | 同左（`agent.sh` は macOS の `nohup` / `lsof` 対応） |
+| PWA 検出 | 各ブラウザの `Web Applications\_crx_<id>` | `~/Applications/*.localized/*.app` の Info.plist |
+| PWA 初回認証 | 署名クッキーを自動生成して設定 | 未対応（認証 URL で対応） |
+| 認証 URL | 起動ログの `?token=` を検証して発行 | 同左（起動直後は最大 10 秒待つ） |
+| アプリ内更新 | あり（GitHub Releases） | なし（ビルドし直し） |
+| 配布 | 自己完結 exe / `install.ps1` | `.app` zip / `install.sh`（ad-hoc 署名） |
+| CLI | `dshl.exe`（GUI と同一） | `dshl`（`.app` 内バイナリのラッパー） |
 
 ## インストール
 
-Windows 10/11（x64）。Releases の exe は単体で動く（.NET ランタイム不要、自己完結版）。
+### Windows
 
-### かんたんインストール（推奨）
+Windows 10/11（x64）。Releases の exe は単体で動く（.NET ランタイム不要、自己完結版）。
 
 ```powershell
 irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 | iex
@@ -29,86 +53,271 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
   & "$env:LOCALAPPDATA\Programs\DshLauncher\uninstall.cmd"
   ```
 
-### ポータブル（インストールしない）
+ポータブル（インストールしない）:
 
-[Releases](https://github.com/Aosy0/dsh-launcher/releases) から `dshl-<version>-win-x64.exe` をダウンロードして
-実行するだけ（約 70MB、.NET 不要）。
-.NET 9 Desktop Runtime が入っている場合は軽量版 `dshl-<version>-win-x64-framework-dependent.exe`（約 0.5MB）も使える。
+- [Releases](https://github.com/Aosy0/dsh-launcher/releases) から `dshl-<version>-win-x64.exe` をダウンロードして
+  実行するだけ（約 70MB、.NET 不要）。
+- .NET 9 Desktop Runtime が入っている場合は軽量版 `dshl-<version>-win-x64-framework-dependent.exe`（約 0.5MB）も使える。
+- 未署名の exe のため、初回は SmartScreen の「Windows によって PC が保護されました」が出ることがある。
+  「詳細情報」→「実行」で進む。
 
-未署名の exe のため、初回は SmartScreen の「Windows によって PC が保護されました」が出ることがある。
-「詳細情報」→「実行」で進む。
+### macOS
+
+macOS 13 以降。Xcode Command Line Tools（`swift` / `sips` / `iconutil` / `codesign`）が必要です。
+
+```sh
+cd mac
+./build.sh          # dist/DSH Launcher.app / dist/dshl / dist/DSHLauncher-<version>-mac-<arch>.zip
+./install.sh        # ~/Applications/DSH Launcher.app と ~/.local/bin/dshl
+```
+
+- アプリは `~/Applications`、CLI は `~/.local/bin` に置く。`/Applications` も sudo も使わない。
+- `~/.local/bin` が PATH に無い場合は `~/.zshrc` に追加:
+  ```sh
+  export PATH="$HOME/.local/bin:$PATH"
+  ```
+- アンインストール: `./uninstall.sh`（設定・ログも消すなら `--purge`）。
+- 未署名（ad-hoc 署名のみ）なので、ダウンロードした zip を展開した場合は Gatekeeper の警告が出ることがある。
+  Finder で右クリック →「開く」、または:
+  ```sh
+  xattr -dr com.apple.quarantine "$HOME/Applications/DSH Launcher.app"
+  ```
+- 開発中は `open "dist/DSH Launcher.app"` で直接起動してもよい。
 
 ### 前提
 
-| 使う機能 | 必要なもの |
-|---|---|
-| このPCの DSH を起動 / 停止 | Node.js 24.9 以上と dsh（`npm i -g @deepseek-ai/dsh`） |
-| リモートの DSH を操作 | `~/.ssh/config` のホストエイリアス（鍵認証） |
-| PWA を開く | PWA に対応した Chromium 系ブラウザ（Chrome / Edge / Brave など）と、DSH をそのブラウザで「アプリとしてインストール」したもの |
+| 使う機能 | Windows | macOS |
+|---|---|---|
+| この PC の DSH を起動 / 停止 | Node.js 24.9 以上と `dsh`（`npm i -g @deepseek-ai/dsh`） | 同左 |
+| リモートの DSH を操作 | `~/.ssh/config` のホストエイリアス（鍵認証） | 同左 |
+| PWA を開く | Chromium 系ブラウザ（Chrome / Edge / Brave など）で DSH を「アプリとしてインストール」したもの | 同左（Chrome / Brave / Vivaldi / Edge） |
+| ビルド | .NET 9 SDK（配布版のビルド時） | Xcode Command Line Tools |
 
 ## はじめかた
 
-1. 起動するとマシン一覧のウィンドウとトレイ常駐が始まる。初回に `%APPDATA%\DshLauncher\hosts.json` を作成し、
-   `~/.ssh/config` のホストを一覧へ自動で追加する（プロファイル名・ポート・URL は「設定」で編集）。
-2. このPCの行の「起動」で DSH を起動する（タスクスケジューラ経由なので、ランチャーを閉じても残る）。
+1. 起動するとマシン一覧のウィンドウと常駐（Windows: トレイ / macOS: メニューバー）が始まる。
+   初回に `hosts.json` を作成し、`~/.ssh/config` のホストを一覧へ自動で追加する。
+2. この PC の行の「起動」で DSH を起動する。Windows はタスクスケジューラ、macOS は LaunchAgent を
+   経由するので、ランチャーを閉じても残る。
 3. リモートが「要セットアップ」なら「DSH をセットアップ」で Node と dsh を導入する。
-4. ボトムバー / トレイの「PWA を開く」で、DSH をインストール済みブラウザの Web アプリ（PWA）として開ける。
-   初回（未認証）は自動で認証を更新してから開く。未インストールなら、ブラウザで開いて追加する手順を案内する。
-5. コマンドラインは同じ exe:
+4. 「PWA を開く」で、DSH をインストール済みブラウザの Web アプリとして開ける。
+   Windows は初回（未認証）に自動で認証を更新してから開く。未インストールならブラウザで開いて
+   追加する手順を案内する。
+5. コマンドラインは同じバイナリ:
 
    ```powershell
+   # Windows
    & "$env:LOCALAPPDATA\Programs\DshLauncher\dshl.exe" status --json
    ```
 
-## macOS 版（v0.1.0 / 2026-11-13）
+   ```sh
+   # macOS
+   ~/.local/bin/dshl status --json
+   ```
 
-macOS 向けに、メニューバー常駐の SwiftUI アプリと CLI（`dshl`）を `mac/` に実装しました。
-Windows 版（WPF）とはコードを共有せず、launchd・`open`・`~/Applications` の Web アプリなど
-macOS の作法で作り直しています。
+## 共通の機能と仕組み
 
-- ビルド: `cd mac && ./build.sh`（Xcode Command Line Tools が必要）
-- インストール: `./install.sh`（`~/Applications/DSH Launcher.app` と `~/.local/bin/dshl`。sudo 不要）
-- ローカル起動は LaunchAgent（`RunAtLoad` 無効 + `kickstart`）。ランチャーを閉じても dsh は残る
-- リモートは Windows 版と同じ SSH + ヘルパー方式（`agent.sh` / `agent.ps1`）
-- PWA は `~/Applications/*.localized` の `.app` を検出して `open -a`。認証 URL も発行可能
-- 未署名（ad-hoc）・自動更新なし・PWA の初回認証自動化は未対応
+### マシン一覧と操作
 
-![macOS UI](design/mac-v1.png)
+- 状態でグループ化（稼働中 / 要対応 / 停止）。選択行だけが URL・PID・稼働時間・メモリ・
+  実行コマンド（受領書）をインライン展開する。
+- 起動・再起動・停止は、実行前に対象・現在状態・**実行するコマンド**を見せる確認ダイアログを出す。
+- マシンの追加・名前変更・削除（ローカル行は削除不可）、ログ表示、集計表示。
+- Windows はトレイ、macOS はメニューバーから同じ操作ができる。
 
-使い方・制限・開発手順は [mac/README.md](mac/README.md)、設計は [DESIGN.md](DESIGN.md) の
-「13. macOS 版」を参照してください。
+### ローカル起動
 
-## ドキュメント
+どちらも `dsh <profile> --port <port> --no-open` を、ランチャーのプロセスツリーから切り離して起動する。
 
-| 内容 | 場所 |
-|---|---|
-| セッション引き継ぎ（最小） | [AGENTS.md](AGENTS.md) |
-| 設計・デザイン・決定事項 | [DESIGN.md](DESIGN.md) |
-| 開発・構成・障害対応 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
+**Windows**: タスクスケジューラ（`DshLauncher\start-<id>`）＋`wscript` の非表示ランチャー。
+起動スクリプトは `run-<id>.cmd` / `run-<id>.vbs`。停止時はポート占有プロセスのツリーを終了し、
+タスクとラッパーを掃除する。
+
+**macOS**: ユーザー LaunchAgent
+（`~/Library/LaunchAgents/io.github.aosy0.dshlauncher.start-<id>.plist`）。`RunAtLoad` と
+`KeepAlive` は無効で、`launchctl bootstrap` → `kickstart -k` のときだけ起動する。停止は
+`bootout` のあと、ポート占有プロセスの子孫を終了して plist を削除する。GUI アプリと launchd は
+シェルの PATH を継承しないため、起動スクリプトが nvm / `~/.npm-global/bin` / Homebrew /
+`~/.dsh/runtime/node` から Node 24.9+ と dsh を解決して PATH を明示する。ログ
+（`?token=` を含む）は 0600、アプリのデータフォルダは 0700。
+
+### リモート
+
+`~/.ssh/config` の Host エイリアスをそのまま使う。認証は鍵 / ssh-agent のみで、パスワードは保存しない
+（`BatchMode=yes`、`ConnectTimeout=5`）。
+
+- 状態検出は SSH 1 回。`uname -s` / `node -v` / `command -v dsh` / `~/.dsh` / ポートの LISTEN /
+  ヘルパーの `status` をまとめて取得する。Linux / macOS は POSIX、Windows は PowerShell で判定。
+- 操作は `~/.dsh/dshl/agent.sh`（POSIX）/ `agent.ps1`（Windows）。`dshl setup <machine>` で配置し、
+  `--install` を付けると Node 24.9+ と dsh も導入する。自動では配置しない。
+- macOS のリモートでは `setsid` が無いため `nohup` で起動し、停止は pidfile と `lsof` / `pgrep` で
+  子孫を終了する。Windows リモートは UTF-8 BOM 付きの `agent.ps1` をタスクスケジューラ＋`wscript` で動かす。
+
+### 認証 URL
+
+dsh web は起動時に一度だけ `dsh web: <url>?token=...` を出力する。ランチャーは起動ログ（末尾 256 KB）
+から候補を拾い、**稼働中のサーバーが 3xx + `Set-Cookie: dsh-auth-…` を返すものだけ**を採用する。
+古いトークンは 401 で捨てる（検証クライアントは Cookie を保持せず、リダイレクトも追わない）。
+
+- 対象は**ランチャー経由で起動したローカル DSH** のみ。リモートは未対応。
+- トークンは認証情報そのもの。ランチャーはファイルに保存せず、画面・クリップボード・CLI の
+  stdout / JSON に出すだけ。dsh を再起動すると URL は変わる。
+- Windows は 2.5 秒、macOS は 10 秒の猶予で起動直後のログ行を待つ。
+
+### PWA（Web アプリ）を開く
+
+**Windows**: Chromium 系ブラウザの `<User Data>\<Profile>\Web Applications\_crx_<id>`
+（Edge は `_crx__<id>`）で検出し、`chrome_proxy.exe` / `msedge_proxy.exe` に
+`--profile-directory` と `--app-id` を渡して起動する。初回認証（401）は
+`$DSH_HOME/.credentials.yaml` の browser-session secret から署名クッキーを再生成し、
+非表示のアプリウィンドウ＋一時ローカルページで設定してから開き直す。
+
+**macOS**: Chromium 系ブラウザが `~/Applications/Chrome Apps.localized` などに作る `.app` の
+`Contents/Info.plist`（`CrAppModeShortcutID` / `CrAppModeShortcutURL`）を読み、`open -a` で起動する。
+ブラウザ内部 DB は読まない。**初回認証のクッキー自動生成は未実装**で、認証 URL をブラウザで開いて
+認証する。
+
+どちらも app id は manifest id の**二重 SHA-256**（先頭 16 バイトを a–p に写像）。DSH の manifest は
+`start_url: "./"` なので、`http://127.0.0.1:3080/` の app id は
+`hgiemfgfjhalibdoboikeiepnnjapnpc`。未インストール時はインストールせず、ブラウザで開いて案内する。
+
+### データの場所
+
+| 種類 | Windows | macOS |
+|---|---|---|
+| 設定 | `%APPDATA%\DshLauncher\hosts.json` | `~/Library/Application Support/DshLauncher/hosts.json` |
+| 起動ログ | `%APPDATA%\DshLauncher\logs\<id>.log` | `~/Library/Application Support/DshLauncher/logs/<id>.log` |
+| アプリログ | — | `~/Library/Application Support/DshLauncher/logs/app.log` |
+| 起動スクリプト | `%APPDATA%\DshLauncher\run\<id>.cmd` / `.vbs` | `~/Library/Application Support/DshLauncher/run/<id>.sh` |
+| スケジューラ | タスク `DshLauncher\start-<id>` | LaunchAgent `io.github.aosy0.dshlauncher.start-<id>.plist` |
+| PWA 認証の記憶 | `%APPDATA%\DshLauncher\pwa-auth.json` | なし |
+| リモートヘルパー | `~/.dsh/dshl/agent.ps1` | `~/.dsh/dshl/agent.sh` |
+
+### バージョン
+
+`src/DshLauncher/DshLauncher.csproj` の `<Version>` が**唯一の情報源**です（現在 `0.1.16`）。
+
+- Windows: UI 右下と `dshl --version` がアセンブリのバージョンを表示する。
+- macOS: `mac/build.sh` が csproj の `<Version>` を読み、`CFBundleShortVersionString` /
+  `CFBundleVersion` に設定する。`dshl --version` はバンドルの値を表示する。
+- リリースのタグ `vX.Y.Z` は `<Version>` と一致させる（Windows の Release ワークフローが検証する）。
+  macOS 版も同じ番号を使う。個別のバージョン番号は持たない。
+
+## CLI
+
+```sh
+dshl status [machine] [--all] [--json]
+dshl start|stop|restart [machine] [--yes] [--dry-run] [--json]
+dshl machines [--json]
+dshl url [machine]
+dshl logs [machine] [-n 50]
+dshl setup [machine] [--install] [--dry-run]   # ヘルパー配置 / Node と dsh の導入
+dshl rename <machine> <name>
+dshl add <name> <ssh-alias> [linux|windows|macos]
+dshl remove <machine>
+dshl open [machine] [--dry-run]
+dshl pwa [--open] [--dry-run] [--json]
+dshl auth-url [machine] [--copy] [--open] [--json]
+dshl gui
+dshl --version
+```
+
+- Windows のみ: `dshl update [--check] [--dry-run] [--json]`（アプリ内更新）。
+- macOS の開発用: `dshl snapshot <out.png>`（一覧をオフスクリーン描画。SSH から `screencapture` が
+  使えない環境の確認用。ユーザー向け機能ではない）。
+- `--config <path>` で別の `hosts.json` を使える（ラボ検証用）。
+- 終了コード: `0` 成功 / `1` エラー / `2` 変更なし / `3` 到達不可 / `4` 要セットアップ。
 
 ## 実装状況（v0.1.16 / 2026-11-13）
 
-| 機能 | 状態 |
-|---|---|
-| 一覧ウィンドウ（状態グループ・選択行の展開・集計） | ✅ 実装 |
-| ローカル: 起動 / 再起動 / 停止 / 状態（PID・稼働時間・メモリ） | ✅ 実装・実機確認 |
-| ローカルの表示名 `マシン名(local)` | ✅ `nzxt(local)` |
-| マシン名の編集（右クリック → 名前を変更…、`dshl rename`） | ✅ 実装 |
-| トレイ常駐（集計・マシン別サブメニュー・一括再起動・終了） | ✅ 実装 |
-| 確認ダイアログ（対象・実行コマンド・現在状態） | ✅ 実装 |
-| リモート: SSH 検出（OS / Node / dsh / ~/.dsh / ポート / 遅延） | ✅ 実機確認 |
-| リモート: ヘルパー自動配置（`setup`） | ✅ 実機確認（minipc-server へ配置） |
-| リモート: 起動 / 再起動 / 停止 | ✅ 実機確認（minipc-server を起動し HTTP 401 まで確認） |
-| リモート: DSH の自動セットアップ（Node 24.9+ と dsh） | ✅ 実機確認（minipc-server: Node v24.13.0 / dsh 0.2.2-rc.1） |
-| ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 |
-| マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 |
-| PWA を開く（ブラウザの Web アプリ、マシン非依存） | ✅ 実装・実機確認（Chrome / Edge / Brave の Web アプリ検出、初回認証の自動化） |
-| 新しいブラウザの認証 URL（`?token=` 付き）の発行 | ✅ 実装・実機確認（v0.1.16。ボトムバー / 行メニュー / トレイ / CLI） |
-| アプリ内更新（通知 → ダウンロード → 置き換え → 再起動） | ✅ 実装・実機確認（v0.1.15） |
-| 配布（GitHub Releases / install.ps1 / アイコン） | ✅ v0.1.10 から |
-| URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 |
+| 機能 | Windows | macOS |
+|---|---|---|
+| 一覧ウィンドウ（状態グループ・選択行の展開・集計） | ✅ 実装 | ✅ 実装 |
+| ローカル: 起動 / 再起動 / 停止 / 状態（PID・稼働時間・メモリ） | ✅ 実機確認 | ✅ 実機確認（launchd） |
+| ローカルの表示名 `マシン名(local)` | ✅ `nzxt(local)` | ✅ `MacBoooook Air!(local)` |
+| マシン名の編集（右クリック → 名前を変更…、`dshl rename`） | ✅ 実装 | ✅ 実装 |
+| 常駐（集計・マシン別サブメニュー・終了） | ✅ トレイ | ✅ メニューバー |
+| 確認ダイアログ（対象・実行コマンド・現在状態） | ✅ 実装 | ✅ 実装 |
+| リモート: SSH 検出（OS / Node / dsh / ~/.dsh / ポート / 遅延） | ✅ 実機確認 | ✅ 実機確認 |
+| リモート: ヘルパー自動配置（`setup`） | ✅ 実機確認 | ✅ 実機確認（minipc / cps） |
+| リモート: 起動 / 再起動 / 停止 | ✅ 実機確認 | ✅ 実機確認（Linux / Windows） |
+| リモート: DSH の自動セットアップ（Node 24.9+ と dsh） | ✅ 実機確認 | ✅ 実装（dry-run まで確認） |
+| ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 | ✅ 実装 |
+| マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 | ✅ 実装 |
+| PWA を開く（Web アプリ検出・起動） | ✅ 実機確認（初回認証も自動） | ✅ 検出・起動（初回認証の自動化は未対応） |
+| 新しいブラウザの認証 URL（`?token=` 付き）の発行 | ✅ 実機確認 | ✅ 実機確認 |
+| アプリ内更新（通知 → ダウンロード → 置き換え → 再起動） | ✅ 実装・実機確認 | — |
+| 配布（Release / インストーラ / アイコン） | ✅ v0.1.10 から | ✅ .app / zip / `install.sh` |
+| URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 | ⏳ 次段 |
 
-## 修正履歴（v0.1.16）
+## 開発とビルド
+
+| | Windows | macOS |
+|---|---|---|
+| ビルド | `dotnet publish`（[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)） | `cd mac && ./build.sh` |
+| 実行 | `dist\dshl.exe` | `open "mac/dist/DSH Launcher.app"` / `~/.local/bin/dshl` |
+| テスト | 別 DSH_HOME・別ポートのラボ | 同左（`~/.dsh-lab`・port 3090） |
+
+- Windows のビルド・リリース手順、テスト手順、トラブルシュート: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- macOS の構成・launchd の落とし穴・リモート検証・スナップショット: 同じ
+  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) の「macOS 版」。
+- バージョンを上げるときは `src/DshLauncher/DshLauncher.csproj` の `<Version>` を更新する
+  （Windows / macOS 共通）。
+
+## 構成
+
+```
+dsh-launcher/
+├─ .github/workflows/release.yml  # v* タグ → Windows 版をビルドして GitHub Release を作成
+├─ install.ps1            # Windows 配布用インストーラ（latest を取得・検証・配置）
+├─ tools/make-icon.py     # app.ico の生成（Pillow が必要）
+├─ tools/make-mac-icon.py # macOS 用 AppIcon-1024.png の生成
+├─ DESIGN.md              # 監査・方向・9パス・リモート設計・CLI仕様・決定事項
+├─ design/                # v1/v2/v3 のモック、mac-v1.png（macOS 実機の描画）
+├─ mockups/v0/            # 最初の3案（比較用）
+├─ src/DshLauncher/       # Windows 版 WPF (.NET 9) 実装
+│  ├─ Program.cs          # GUI/CLI 分岐（WinExe + コンソール接続）
+│  ├─ Model.cs            # 設定・状態・ポート検出
+│  ├─ Local.cs            # ローカル起動/停止/状態（タスクスケジューラ起動）
+│  ├─ Remote.cs           # SSH・リモート検出/操作・ヘルパースクリプト
+│  ├─ BrowserApp.cs       # PWA の検出と起動（app id 算出・プロファイル走査）
+│  ├─ PwaAuth.cs          # PWA の初回認証（署名クッキー発行・ブラウザ設定）
+│  ├─ AuthUrl.cs          # 新しいブラウザの認証 URL
+│  ├─ Update.cs           # アプリ内更新
+│  ├─ Cli.cs              # dshl サブコマンド
+│  ├─ Ui.cs / Dialogs.cs  # 一覧・トレイ・確認ダイアログ
+│  └─ app.ico
+├─ mac/                   # macOS 版（SwiftUI + AppKit + CLI）
+│  ├─ build.sh            # csproj の <Version> を読んで .app / dshl / zip を生成
+│  ├─ install.sh          # ~/Applications と ~/.local/bin に配置
+│  ├─ uninstall.sh
+│  ├─ Package.swift
+│  ├─ Support/            # Info.plist と AppIcon-1024.png
+│  └─ Sources/DshLauncherMac/  # launchd・SSH・認証URL・PWA・UI・CLI
+└─ dist/dshl.exe          # ビルド済み Windows 単一ファイル（.NET 9 Desktop Runtime 使用）
+```
+
+## 修正履歴
+
+macOS 版は v0.1.16 が初版です。以下はプラットフォームごとの履歴です。
+
+### macOS 版 v0.1.16（初版 / 2026-11-13）
+
+- `mac/` に SwiftUI + AppKit のメニューバーアプリと CLI を追加。Windows 版と同じバージョン 0.1.16。
+- 一覧・状態グループ・選択行の受領書・起動/再起動/停止・ログ・マシン追加/名前変更/削除。
+- ローカル起動は LaunchAgent（`RunAtLoad` 無効 + `kickstart`）。`Umask` 077 でログを 0600 に。
+- リモートは SSH プローブ＋`agent.sh` / `agent.ps1`。macOS の `setsid` 不在・`netstat` のドット表記に
+  対応した停止処理。
+- 認証 URL（起動ログの token を 3xx + `Set-Cookie` で検証、10 秒猶予）、PWA 検出
+  （`~/Applications/*.localized` の Info.plist、二重 SHA-256 の app id）。
+- `dshl snapshot`（開発用のオフスクリーン描画）、`build.sh` / `install.sh` / `uninstall.sh`。
+- 実機（Apple M1 / macOS 27.0.1）で、ローカル 3080 の launchd 起動/停止/再起動、minipc（Linux）/
+  cps（Windows）の検出・起動/停止、認証 URL、PWA 検出を確認。
+- **未対応**: アプリ内更新、PWA 初回認証の自動化、リモートの認証 URL、公証（ad-hoc 署名のみ）。
+
+### Windows 版
+
+#### v0.1.16
 
 - **新しいブラウザの認証 URL を発行**。dsh web が起動時に 1 回だけ出力する `?token=` 付き URL を、
   ボトムバー「認証 URL」・ローカル行メニュー・トレイ・`dshl auth-url` から発行できるようにした。
@@ -121,7 +330,7 @@ macOS の作法で作り直しています。
   - PWA 自動認証の説明にあった「起動ログは排他ロックで読めない」を実測に合わせて訂正
   - `docs/DEVELOPMENT.md` の制御文字（BEL）を修正
 
-## 修正履歴（v0.1.15）
+#### v0.1.15
 
 - **アプリ内更新を追加**。起動後と6時間ごとに GitHub Releases を確認し、新しければ
   ステータスバーに「v0.1.15 に更新」、トレイに通知（バルーン）を出す。クリックすると
@@ -131,7 +340,7 @@ macOS の作法で作り直しています。
   - 更新先に書き込めない場合・別のランチャーが起動中の場合は実行せず理由を表示
   - トレイメニューに「更新を確認…」「v0.1.15 に更新…」、CLI に `dshl update [--check] [--dry-run] [--json]`
 
-## 修正履歴（v0.1.14）
+#### v0.1.14
 
 - **PWA の初回認証を自動化**。「PWA を開く」で未認証（401 画面）を検知すると、
   DSH が発行するブラウザセッションクッキーを自動で発行してブラウザプロファイルに設定し、PWA を開き直す。
@@ -157,7 +366,7 @@ macOS の作法で作り直しています。
   テンプレートに左右 14px の余白を追加し、高さも他の主ボタンと同じ 28px に揃えた。
 - CLI: `dshl pwa --json` に `browser`（起動に使うブラウザ）と `browsers`（検出したブラウザ一覧）を追加。
 
-## 修正履歴（v0.1.12）
+#### v0.1.12
 
 - アプリアイコンを `>_` のプロンプト記号から **DSH の文字マーク**へ変更（ターミナルエミュレーターに見えるため）。
   各サイズは `design/icon-sizes.png`。
@@ -166,13 +375,13 @@ macOS の作法で作り直しています。
   配置先の `install.ps1` は Windows PowerShell 5.1 でも読めるよう **UTF-8 BOM 付き**で書き出す。
   アンインストールは、実行中の .cmd が消えて cmd.exe がエラーを出さないよう**終了後にバックグラウンドで削除**する。
 
-## 修正履歴（v0.1.11）
+#### v0.1.11
 
 - `install.ps1` の修正: 配置先にコピーされたインストーラから `-Uninstall` を実行したとき、
   `-InstallDir` を指定してインストールしていても**元の配置先**（dshl.exe と同じフォルダ）を既定にする。
   インストール先の削除はロックが外れるまで数回リトライする。
 
-## 修正履歴（v0.1.10）
+#### v0.1.10
 
 - **他のPCへ配布できるようにした**。
   - 自己完結の単一 exe（.NET ランタイム不要、約 70MB）と framework-dependent（約 0.5MB、.NET 9 Desktop Runtime が必要）を
@@ -183,7 +392,7 @@ macOS の作法で作り直しています。
   - アプリアイコン（`src/DshLauncher/app.ico`、`python tools/make-icon.py` で生成）を追加し、
     ウィンドウ・トレイ・ショートカットを同じ意匠に。exe のメタデータ（ProductName / Description）も設定。
 
-## 修正履歴（v0.1.9）
+#### v0.1.9
 
 - PWA を開く導線を**マシンから独立**させ、ボトムバー右の主ボタンと**トレイの最上位**に置いた。名前は「**PWA を開く**」。
   行メニュー・選択行の展開・トレイのマシン別サブメニューからは外した（PWA はこのPCの DSH に属するもので、マシン行の操作ではないため）。
@@ -191,7 +400,7 @@ macOS の作法で作り直しています。
   v0.1.8 の `dshl open <machine> --app` と `dshl apps` は削除。
 - 検出と起動の仕組みは v0.1.8 のまま（`chrome_proxy.exe --profile-directory="Profile N" --app-id=<id>`）。
 
-## 修正履歴（v0.1.8）
+#### v0.1.8
 
 - ローカル DSH の PWA（ブラウザの Web アプリ）検出と起動を追加
   （v0.1.9 で導線をマシン非依存に、v0.1.13 で Chromium 系ブラウザ一般に拡張）。
@@ -205,29 +414,30 @@ macOS の作法で作り直しています。
   - SSH マシンは `url` 未設定だと `http://127.0.0.1:<port>/` に解決され、この PC の PWA と一致してしまうため対象外。
   - 起動は既存のブラウザ起動と同じく子プロセスを残さない（`UseShellExecute`。DSH 本体の起動だけがタスクスケジューラ経由）。
 
-## 修正履歴（v0.1.7）
+#### v0.1.7
 
 - 起動/再起動中のインジケータバーが「左から出て途中で消える」問題を修正。
   600ms ごとの一覧再描画でバーを作り直していたのが原因。操作中は**経過秒数のテキストだけ更新**し、
   バーのアニメーションを維持するようにした（再描画は操作完了時のみ）。リモート起動でも同様。
 
-## 修正履歴（v0.1.6）
+#### v0.1.6
 
-- 右下のバージョン表記を固定文字列 0.1 から**アセンブリのバージョン**（csproj の <Version>）表示に変更。
-- CLI に dshl --version（および dshl version）を追加。現在は **v0.1.6**。
-- 今後バージョンを上げるときは src/DshLauncher/DshLauncher.csproj の <Version> を更新して再ビルド。
+- 右下のバージョン表記を固定文字列 0.1 から**アセンブリのバージョン**（csproj の `<Version>`）表示に変更。
+- CLI に `dshl --version`（および `dshl version`）を追加。
+- 今後バージョンを上げるときは `src/DshLauncher/DshLauncher.csproj` の `<Version>` を更新して再ビルド。
+  macOS 版も同じ `<Version>` を `mac/build.sh` が読む（v0.1.16 から）。
 
-## 修正履歴（v0.1.5）
+#### v0.1.5
 
 - Windows リモートのセットアップ失敗を修正:
   - `.ps1` を **UTF-8 BOM 付き**で配置（BOM なしだと Windows PowerShell 5.1 が CP932 として読み、日本語入りスクリプトが構文エラーになる）。
   - Windows 側ヘルパーのパラメータ `$Profile` が PowerShell の**自動変数**と衝突していたため `$ProfileName` に改名。
-  - `Get-Command dsh` が `.ps1` シムを返し `cmd.exe` から実行できなかったため、`%APPDATA%\\npm\\dsh.cmd` を優先。
+  - `Get-Command dsh` が `.ps1` シムを返し `cmd.exe` から実行できなかったため、`%APPDATA%\npm\dsh.cmd` を優先。
   - SSH セッション終了で子プロセスが落ちるため、Windows リモートも **タスクスケジューラ + wscript 非表示起動**に統一。
 - 例外メッセージを**コピー可能**に: ダイアログに「コピー」ボタン、本文・受領書は選択可能、ログ窓に「すべてコピー」。
 - 実測: cpswhitegtx1080ti で Node v26.13.0 / dsh 0.2.2-rc.1 を導入 → 起動（HTTP 401）→ 停止（タスク・ポート掃除）まで確認。
 
-## 修正履歴（v0.1.4）
+#### v0.1.4
 
 - リモートマシンへの **DSH セットアップ** を追加。`dshl setup <machine> --install`、GUI は「要セットアップ」行のボタン／右クリック →「DSH をセットアップ…」。
   - Linux: nvm があれば `nvm install 24`、無ければポータブル Node 24 を `~/.dsh/runtime/node` に導入 → `npm i -g @deepseek-ai/dsh@latest` → ヘルパー配置。
@@ -236,104 +446,13 @@ macOS の作法で作り直しています。
 - リモートのヘルパーが nvm / ポータブル Node の PATH を自分で解決するように修正（非対話 SSH で dsh が見つからない問題）。
 - リモート起動コマンドの誤り（`web --profile` 二重指定）を修正。
 
-## 修正履歴（v0.1.3）
+#### その他（v0.1.1〜v0.1.3）
 
-- 行内の「再起動 / 停止 / 起動」ボタンの余白を拡大（高さ28px・左右パディング14px・最小幅64px・ボタン間8px・行パディング10px・行高38px）。
-
-## 修正履歴（v0.1.2）
-
-- 起動/再起動/停止中に**進行表示**を追加: 行内に「起動中 12s」などの経過秒数とインジケータバー（WPFアニメーション）、下部ステータスバーに「更新中…」表示とバー。
-- 起動用のターミナル窓が残る問題を修正: Task Scheduler のアクションを wscript.exe 経由の**非表示ランチャー**（run-<id>.vbs）に変更。
-  停止時にタスクと残った cmd ラッパーを掃除するので、旧バージョンが開いた窓も停止/再起動で消えます。
-
-## 修正履歴（v0.1.1）
-
-- ダイアログのボタンが反応しない問題を修正（ウィンドウ全体の DragMove() がマウスを掴み、Border 疑似ボタンのクリックを飲んでいた）。ボタンを本物の Button（ControlTemplate 付き・UIAutomation 対応）に変更し、ドラッグは非インタラクティブ領域のみに限定。
-- キャンセルでダイアログが閉じない問題も同根で解消。実機で「キャンセル→PID不変」「再起動→PID変更」を確認。
-- 受領書のコマンド表記を dsh <profile> --port <port> --no-open に短縮。
-
-## 起動（リポジトリのビルド）
-
-```powershell
-# GUI（トレイ常駐）
-C:\Users\koboy\Documents\dsh-launcher\dist\dshl.exe
-
-# CLI（同じ exe）
-dshl status [machine] --json
-dshl start|stop|restart [machine] [--dry-run] [--json]
-dshl machines / url / logs / setup / rename / add / remove
-dshl open [machine] [--dry-run]
-dshl pwa [--open] [--dry-run] [--json]
-dshl auth-url [machine] [--copy] [--open] [--json]
-dshl update [--check] [--dry-run] [--json]
-dshl gui
-```
-
-- **更新**: 新しいバージョンがあるとボトムバー上（ステータスバー）とトレイで通知する。
-  クリックでダウンロード・検証・差し替え・再起動まで自動（ブラウザは開かない）。
-  `dshl update --check` で確認だけ、`dshl update` で適用。
-
-- **PWA を開く**: ボトムバー右の「PWA を開く」、または `dshl pwa --open`。
-  ブラウザの Web アプリ（このPCの DSH）を独立ウィンドウで開く。未インストールならインストール手順を案内する。
-  **未認証（401）なら自動で認証クッキーを発行してから開き直す**（`~/.dsh/.credentials.yaml` の
-  browser-session secret から生成。対象は `http://127.0.0.1:<port>` の PWA）。認証状態は
-  `%APPDATA%\DshLauncher\pwa-auth.json` に保存する。
-  `dshl pwa --json` で、起動に使うブラウザ（`browser`）・検出したブラウザ一覧（`browsers`）・
-  認証状態（`authenticated`）・自動認証の可否（`authAvailable`）を確認できる。
-
-- **認証 URL**: ボトムバーの「認証 URL」、ローカル行の右クリック →「認証 URL を発行…」、
-  トレイの「認証 URL を発行…」、または `dshl auth-url`。**新しいブラウザ**（別プロファイル・別端末）を
-  DSH に認証する `?token=` 付き URL を発行する。
-  - 取得元はランチャーが起動した dsh のログ（`%APPDATA%\DshLauncher\logs\<id>.log`）。
-    起動時に dsh web が 1 回だけ出力する `dsh web: …?token=…` を新しい順に拾い、
-    **稼働中のサーバーが 3xx（`Set-Cookie: dsh-auth-…` 付き）を返すものだけ**を採用する
-    （再起動前の古い行は 401 で捨てる）。検証クライアントは Cookie を保持しない。
-  - 表示する URL は、`hosts.json` の `url`（設定されていれば）、無ければログの URL が公開アドレスならそれ、
-    それも無ければ `http://127.0.0.1:<port>/`。トークンは authority に依存しないので、同じ DSH なら
-    ループバックでも公開 URL（Tailscale など）でも使える。ダイアログは両方を「コピー」「ブラウザで開く」付きで出す。
-  - URL は認証情報。ランチャー自身はトークンをファイルに保存しない（表示・コピー・CLI の stdout/JSON のみ）。
-    DSH を再起動すると URL は変わる。
-  - 対象はランチャー経由で起動したローカル DSH（リモートは未対応）。
-
-- 設定: `%APPDATA%\DshLauncher\hosts.json`（秘密情報なし。SSH は `~/.ssh/config` のエイリアスを使用）
-- ローカル起動は **タスクスケジューラ経由**（`DshLauncher\start-<id>`）。サーバーがランチャーの
-  プロセスツリーから外れるため、CLI をパイプで使っても待たされず、ランチャーを閉じても残る。
-- ローカル起動時のログ: `%APPDATA%\DshLauncher\logs\<id>.log`
-- リモートのヘルパー: `~/.dsh/dshl/agent.sh`（POSIX）/ `agent.ps1`（Windows）。`dshl setup <machine>` で配置。
-- 終了コード: `0` ok / `1` error / `2` no change / `3` unreachable / `4` needs setup
-
-## 構成
-
-```
-dsh-launcher/
-├─ .github/workflows/release.yml  # v* タグ → ビルドして GitHub Release を作成
-├─ install.ps1            # 配布用インストーラ（latest を取得・検証・配置）
-├─ tools/make-icon.py     # app.ico の生成（Pillow が必要）
-├─ DESIGN.md              # 監査・方向・9パス・リモート設計・CLI仕様・決定事項
-├─ design/
-│  ├─ v1/ v2/ v3/         # デザインの変遷（v3 が確定、15-gui-window.png は実機）
-├─ mockups/v0/            # 最初の3案（比較用）
-├─ src/DshLauncher/       # WPF (.NET 9) 実装
-│  ├─ app.ico             # アプリアイコン（tools/make-icon.py で生成）
-│  ├─ Program.cs          # GUI/CLI 分岐（WinExe + コンソール接続）
-│  ├─ Model.cs            # 設定・状態・ポート検出
-│  ├─ Local.cs            # ローカル起動/停止/状態（タスクスケジューラ起動）
-│  ├─ Remote.cs           # SSH・リモート検出/操作・ヘルパースクリプト
-│  ├─ BrowserApp.cs        # ブラウザの Web アプリ（PWA）の検出と起動（app id 算出・プロファイル走査）
-│  ├─ PwaAuth.cs           # PWA の初回認証（署名クッキーの発行・ブラウザへの設定・認証状態）
-│  ├─ AuthUrl.cs           # 新しいブラウザの認証 URL（起動ログの ?token= を検証して発行）
-│  ├─ Update.cs            # アプリ内更新（GitHub Releases 確認・検証・差し替え・再起動）
-│  ├─ Cli.cs              # dshl サブコマンド
-│  ├─ Ui.cs               # 一覧ウィンドウ・トレイ・テーマ
-│  └─ Dialogs.cs          # 確認・名前変更・マシン追加・ログ
-├─ mac/                   # macOS 版（SwiftUI + AppKit + CLI）
-│  ├─ build.sh            # .app / dshl / zip を生成
-│  ├─ install.sh          # ~/Applications と ~/.local/bin に配置
-│  └─ Sources/DshLauncherMac/  # launchd・SSH・認証URL・PWA・UI
-└─ dist/dshl.exe          # ビルド済み単一ファイル（.NET 9 Desktop Runtime 使用）
-```
-
-リリースの作り方・配布物のビルドは [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) を参照。
+- v0.1.1: ダイアログのボタンが反応しない問題を修正（ウィンドウ全体の `DragMove()` がマウスを掴んでいた）。
+  キャンセルで閉じない問題も解消。受領書のコマンド表記を `dsh <profile> --port <port> --no-open` に短縮。
+- v0.1.2: 起動/再起動/停止中の進行表示（経過秒数・インジケータバー）を追加。タスクスケジューラの
+  アクションを `wscript.exe` 経由の非表示ランチャーに変更。
+- v0.1.3: 行内の「再起動 / 停止 / 起動」ボタンの余白を拡大（高さ 28px・左右 14px・最小幅 64px）。
 
 ## ライセンスと非公式について
 
@@ -351,15 +470,6 @@ dsh-launcher/
 | ホスト | OS | Node | dsh | 状態 |
 |---|---|---|---|---|
 | このPC（nzxt(local)） | Windows | v24.18.0 | 0.2.2-rc.1 | 稼働中 |
-| minipc-server | Linux | v24.13.0 | 0.2.2-rc.1 | 停止（セットアップ・起動/停止まで実機確認） |
-| cpswhitegtx1080ti | Windows | v26.13.0 | 0.2.2-rc.1 | 停止（セットアップ・起動/停止まで実機確認） |
+| minipc-server | Linux | v24.13.0 | 0.2.2-rc.1 | 稼働中（検出・起動/停止を実機確認） |
+| cpswhitegtx1080ti | Windows | v26.13.0 | 0.2.2-rc.1 | 稼働中（検出・起動/停止を実機確認） |
 | macbook（MacBoooook Air!） | macOS 27.0.1 | v24.16.0 | 0.2.2-rc.1 | 稼働中（macOS 版・launchd 管理で実機確認） |
-
-
-
-
-
-
-
-
-

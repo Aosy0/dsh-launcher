@@ -2,18 +2,27 @@
 # Build the macOS app bundle and CLI wrapper.
 #
 #   ./build.sh            # release build -> dist/DSH Launcher.app + dist/dshl + zip
-#   VERSION=0.1.1 ./build.sh
+#   VERSION=0.1.16 ./build.sh   # override (normally read from the Windows csproj)
+#
+# The version is shared with the Windows app: src/DshLauncher/DshLauncher.csproj
+# is the single source of truth, and this script reads its <Version>.
 #
 # Requires Xcode Command Line Tools (swift, sips, iconutil, codesign).
 set -euo pipefail
 
 cd "$(dirname "$0")"
 ROOT="$PWD"
-VERSION="${VERSION:-0.1.0}"
 CONFIG="${CONFIG:-release}"
+PROJECT="$ROOT/../src/DshLauncher/DshLauncher.csproj"
+VERSION="${VERSION:-$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' "$PROJECT" | head -n 1 | tr -d '[:space:]')}"
+if [ -z "$VERSION" ]; then
+    echo "error: ${PROJECT} の <Version> を読めません。VERSION=... で指定してください。" >&2
+    exit 1
+fi
 APP="$ROOT/dist/DSH Launcher.app"
 BIN="$ROOT/.build/$CONFIG/DshLauncher"
 
+echo "==> version $VERSION (from DshLauncher.csproj)"
 echo "==> swift build ($CONFIG)"
 swift build -c "$CONFIG" --product DshLauncher
 
@@ -48,7 +57,7 @@ exec "$APP/Contents/MacOS/DshLauncher" "\$@"
 EOF
 chmod +x "$ROOT/dist/dshl"
 ARCH="$(uname -m)"
-ZIP="$ROOT/dist/DSHLauncher-mac-$ARCH.zip"
+ZIP="$ROOT/dist/DSHLauncher-$VERSION-mac-$ARCH.zip"
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 

@@ -5,7 +5,17 @@ import Foundation
 enum AppInfo {
     static let name = "DSH Launcher"
     static let bundleIdentifier = "io.github.aosy0.dshlauncher"
-    static let version = "0.1.0"
+    /// Same version as the Windows app. `mac/build.sh` reads `<Version>` from
+    /// `src/DshLauncher/DshLauncher.csproj` and writes it into the bundle's
+    /// Info.plist; the binary reports that value at runtime. A raw `swift build`
+    /// binary outside the .app has no bundle, so it reports a dev fallback.
+    static let version: String = {
+        let value = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        if let value, !value.isEmpty, value != "__VERSION__" {
+            return value
+        }
+        return "0.0.0-dev"
+    }()
     /// LaunchAgent label prefix. The full label is `<prefix><sanitized machine id>`.
     static let launchLabelPrefix = "io.github.aosy0.dshlauncher.start-"
 }

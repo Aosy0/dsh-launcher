@@ -358,12 +358,12 @@ B（単一マシン型・タブ切替）は**マシン数が増えると破綻�
 
 ---
 
-## 13. macOS 版（v0.1.0 / 2026-11-13）
+## 13. macOS 版（v0.1.16 で追加 / 2026-11-13）
 
 Windows 版とはコードを共有せず、macOS ネイティブ（Swift 6 / SwiftUI + AppKit）で再実装した。
 WPF は macOS で動かず、Windows 固有機能（Task Scheduler / wscript / レジストリ /
 `chrome_proxy.exe`）は macOS の作法に置き換える必要があるため。実装は `mac/`、使い方は
-[mac/README.md](mac/README.md) を参照。
+[README.md](README.md) の macOS の節を参照。
 
 ### 13.1 機能範囲
 
@@ -377,7 +377,9 @@ Windows 版の主要機能に合わせる。
 - CLI（`dshl`）。GUI と同じバイナリで、引数があると CLI になる
 - リモートのヘルパー配置と、Node 24.9+ / dsh のセットアップ
 
-Mac 版のバージョンは Windows 版と独立に `0.1.0` から始める。
+Mac 版のバージョンは Windows 版と同じ。`mac/build.sh` が
+`src/DshLauncher/DshLauncher.csproj` の `<Version>` を読んで Info.plist に書き込み、
+`dshl --version` もその値（バンドル）を表示する。個別のバージョン番号は持たない。
 
 ### 13.2 配布物とビルド
 

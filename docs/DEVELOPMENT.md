@@ -51,9 +51,13 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 ## リリース（GitHub Releases）
 
 配布物は GitHub Actions が作る。**タグと csproj の `<Version>` は一致させる**（ワークフローが検証して失敗する）。
+macOS 版も同じ `<Version>` を `mac/build.sh` が読む（個別のバージョン番号は持たない）。
+現状の `release.yml` は Windows 版だけをビルドする。Mac の配布物は Mac で
+`cd mac && ./build.sh` を実行して `DSHLauncher-<ver>-mac-<arch>.zip` を作り、必要なら手動で Release に添付する。
 
 1. `src/DshLauncher/DshLauncher.csproj` の `<Version>` を上げる（例 `0.1.10`）
-2. ビルドして `dist\dshl.exe` を更新し、README / このファイルを更新
+2. ビルドして `dist\dshl.exe` を更新し、必要なら Mac でも `mac/build.sh` を実行して zip を作る。
+   README / このファイルを更新
 3. コミットして push: `git add -A; git commit -m "v0.1.10"; git push origin main`
 4. タグを作って push: `git tag v0.1.10; git push origin v0.1.10`
 5. Actions が自動で実行される:
@@ -224,14 +228,14 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 ## macOS 版（mac/）
 
 Windows 版と同じ機能を SwiftUI + AppKit で実装したもの。設計は [DESIGN.md](../DESIGN.md)
-「13. macOS 版」、使い方は [mac/README.md](../mac/README.md)。
+「13. macOS 版」、使い方は [README.md](../README.md) の macOS の節。
 
 ### ビルドと配置
 
 ```sh
 # Mac 実機（ssh macbook、Apple M1 / macOS 27.0.1 / Xcode 27.2）
 cd mac
-./build.sh              # dist/DSH Launcher.app / dist/dshl / dist/DSHLauncher-mac-<arch>.zip
+./build.sh              # dist/DSH Launcher.app / dist/dshl / dist/DSHLauncher-<version>-mac-<arch>.zip
 ./install.sh            # ~/Applications と ~/.local/bin/dshl に配置
 ./uninstall.sh [--purge]
 ```
@@ -243,7 +247,10 @@ cd mac
   `sips` + `iconutil` で生成。`app.ico` を変えたら `python tools/make-mac-icon.py` で
   PNG も作り直す（Pillow が必要。PNG はコミットする）。
 - 署名は ad-hoc のみ（`codesign --force --sign -`）。公証はしない。
-- バージョンは `mac/Support/Info.plist` の `__VERSION__` を `build.sh` が置換（既定 0.1.0）。
+- バージョンは Windows 版と同じ。`mac/build.sh` が `src/DshLauncher/DshLauncher.csproj` の
+  `<Version>` を読んで Info.plist（`CFBundleShortVersionString` / `CFBundleVersion`）に書き込み、
+  `dshl --version` はバンドルの値を表示する。`VERSION=... ./build.sh` で上書きもできるが、
+  通常は csproj だけを更新する。
 
 ### 構成
 

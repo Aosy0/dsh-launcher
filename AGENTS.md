@@ -8,6 +8,7 @@ macOS 版は SwiftUI + AppKit のメニューバーアプリと CLI（`mac/`）�
 
 - **バージョン**: `<Version>` の更新と `dist\dshl.exe` の更新は**リリースを指示されたときだけ**
   行う（画面右下と `dshl --version` はアセンブリ由来）。通常の不具合修正ではバージョンを上げない。
+  macOS 版も同じ `<Version>` を `mac/build.sh` が読む（個別のバージョン番号は持たない）。
 - **push**: 自分から push しない。通常の修正はコミットまでで止め、push はユーザーが明示的に
   push / リリースを指示したときだけ行う。
 - **リリース**: ユーザーが明示的にリリースを指示したときだけ行う。配布物は GitHub Actions
@@ -49,7 +50,7 @@ macOS 版は SwiftUI + AppKit のメニューバーアプリと CLI（`mac/`）�
 ## macOS 版（mac/）
 
 - 実装は **SwiftUI + AppKit のメニューバーアプリ + CLI（同一バイナリ）**。Windows 版とコードは共有しない。
-  設計は [DESIGN.md](DESIGN.md) の「13. macOS 版」、使い方は [mac/README.md](mac/README.md)。
+  設計は [DESIGN.md](DESIGN.md) の「13. macOS 版」、使い方は [README.md](README.md)（プラットフォーム別の節）。
 - **ビルド・実機検証は Mac**（`ssh macbook`、Apple M1 / macOS 27.0.1 / Xcode 27.2）で行う。
   Windows の `mac/` を scp して `~/dsh-launcher/mac` で `./build.sh`。`mac/.build/` と `mac/dist/` は
   git 管理外（zip は配布時に Release 添付）。
@@ -64,8 +65,9 @@ macOS 版は SwiftUI + AppKit のメニューバーアプリと CLI（`mac/`）�
 - PWA は `~/Applications` の `Chrome Apps.localized` などの `.app` の Info.plist
   （`CrAppModeShortcutID` / `CrAppModeShortcutURL`）で検出して `open -a`。ブラウザ内部 DB は読まない。
   PWA の初回認証（Cookie 再生成）は未実装。
-- Mac 版のバージョンは `mac/Support/Info.plist` の `__VERSION__` を `build.sh` が置換（既定 0.1.0）。
-  Windows の `<Version>` とは独立。**リリース指示があるまで上げない**。
+- Mac 版のバージョンは **Windows 版と同じ**。`mac/build.sh` が
+  `src/DshLauncher/DshLauncher.csproj` の `<Version>` を読み、Info.plist と `dshl --version` に反映する。
+  個別のバージョン番号は持たない。**リリース指示があるまで上げない**。
 - Mac 実機の GUI 検証は、SSH からの `screencapture` が TCC で失敗するため、`logs/app.log`・
   プロセスの存在・HTTP 401/303・`lsappinfo` で行う。画面確認は人手。
 - Mac 上の dsh は `~/.npm-global/bin/dsh`（nvm の Node 24.16.0 を直接呼ぶラッパー）。
@@ -77,6 +79,6 @@ macOS 版は SwiftUI + AppKit のメニューバーアプリと CLI（`mac/`）�
 | 内容 | 場所 |
 |---|---|
 | 使い方・現状・実測 | [README.md](README.md) |
-| macOS 版の使い方・ビルド | [mac/README.md](mac/README.md) |
+| macOS 版の使い方・ビルド | [README.md](README.md)（macOS の節） |
 | 設計・決定事項・デザイン | [DESIGN.md](DESIGN.md) |
 | 開発手順・構成・トラブルシュート | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
