@@ -1,4 +1,7 @@
 * text=auto
+# The macOS sources and scripts are used as-is on the Mac; keep LF in every checkout
+# so that scp from Windows never turns shebangs into CRLF.
+mac/** text eol=lf
 *.png binary
 *.ico binary
 *.exe binary

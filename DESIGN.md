@@ -358,5 +358,130 @@ B（単一マシン型・タブ切替）は**マシン数が増えると破綻�
 
 ---
 
+## 13. macOS 版（v0.1.0 / 2026-11-13）
+
+Windows 版とはコードを共有せず、macOS ネイティブ（Swift 6 / SwiftUI + AppKit）で再実装した。
+WPF は macOS で動かず、Windows 固有機能（Task Scheduler / wscript / レジストリ /
+`chrome_proxy.exe`）は macOS の作法に置き換える必要があるため。実装は `mac/`、使い方は
+[mac/README.md](mac/README.md) を参照。
+
+### 13.1 機能範囲
+
+Windows 版の主要機能に合わせる。
+
+- マシン一覧（ローカル + `~/.ssh/config` の Host）、状態グループ、選択行の展開
+- ローカル / リモートの起動・再起動・停止、状態（PID・稼働時間・メモリ・遅延）
+- 実行コマンドを見せる確認ダイアログ（コマンド受領書）
+- ログ表示、マシン追加・名前変更・削除
+- PWA（Web アプリ）の検出・起動、新しいブラウザ用の認証 URL の発行
+- CLI（`dshl`）。GUI と同じバイナリで、引数があると CLI になる
+- リモートのヘルパー配置と、Node 24.9+ / dsh のセットアップ
+
+Mac 版のバージョンは Windows 版と独立に `0.1.0` から始める。
+
+### 13.2 配布物とビルド
+
+- `mac/` は SwiftPM パッケージ（macOS 13+、外部依存なし）。
+- `mac/build.sh` が `.app` バンドルを組み立て、アイコン（Windows 版と同じ意匠の
+  `Support/AppIcon-1024.png` から `iconutil` で生成）、Info.plist、ad-hoc 署名、zip を作る。
+- `mac/install.sh` は `~/Applications/DSH Launcher.app` と `~/.local/bin/dshl` に配置する。
+  sudo も `/Applications` も使わない。`uninstall.sh` は LaunchAgent を停止してから削除する。
+- 署名は ad-hoc のみで公証はしない。ダウンロード配布時は Gatekeeper の案内を README に書く。
+
+### 13.3 UI
+
+- **メニューバー常駐**は AppKit の `NSStatusItem`。メニューは開くたびに再構築し、集計・
+  マシン別サブメニュー（ブラウザで開く / 起動・停止・再起動 / ログ / 詳細）・PWA・認証 URL・
+  終了を出す。Windows 版のトレイと同じ役割。
+- 一覧ウィンドウは SwiftUI の `MainView` を `NSWindow` に載せる（520×620、ダーク固定）。
+  Windows 版 v3 のコンパクト一覧、状態グループ、選択行の詳細展開、下部バーを踏襲する。
+- 確認ダイアログは SwiftUI のシートで、対象・現在状態・**実行するコマンド**を等幅で表示し、
+  コピーできる。Windows 版の「コマンド受領書」と同じ signature。
+- ウィンドウを閉じてもアプリは残る（メニューバーから再表示）。⌘Q で終了する。
+
+### 13.4 ローカル起動 = LaunchAgent
+
+Windows 版の「Task Scheduler + wscript による非表示起動」に相当する仕組みとして、
+macOS では**ユーザー LaunchAgent** を使う。
+
+- `~/Library/LaunchAgents/io.github.aosy0.dshlauncher.start-<id>.plist` を生成し、
+  `launchctl bootstrap gui/<uid> <plist>` → `launchctl kickstart -k gui/<uid>/<label>` で起動する。
+- `RunAtLoad` と `KeepAlive` は無効。ログイン時に勝手に起動せず、dsh が落ちても自動再起動しない。
+  起動は常にユーザー操作（UI の起動 / `dshl start`）から。
+- ランチャーを終了しても dsh は launchd 配下で残る。停止は `launchctl bootout` のあと、
+  ポートを占有している PID の子孫を `pgrep -P` で辿って TERM → KILL し、plist を削除する。
+- 起動スクリプトは `~/Library/Application Support/DshLauncher/run/<id>.sh`。GUI アプリと
+  launchd はシェルの PATH を継承しないため、`~/.nvm/versions/node/*` / `~/.npm-global/bin` /
+  `/opt/homebrew/bin` / `~/.dsh/runtime/node` から **Node 24.9+ と dsh を解決**して PATH を
+  明示する。dsh が見つからない場合は起動せず理由を返す。
+- ログは `~/Library/Application Support/DshLauncher/logs/<id>.log`（`dsh web:` の
+  `?token=` 行もここに残る）。アプリ自身のログは同 `app.log`。
+
+### 13.5 リモート
+
+Windows 版と同じ「SSH + 小さなヘルパー」方式。
+
+- 検出は SSH 1 回。PATH を前置したうえで `uname -s` / `node -v` / `command -v dsh` /
+  `~/.dsh` / ポートの LISTEN / ヘルパーの `status` をまとめて取り、Linux・Darwin は POSIX、
+  それ以外は PowerShell プローブで Windows と判定する。
+- 操作は `~/.dsh/dshl/agent.sh`（POSIX）または `agent.ps1`（Windows）。`DSH_PORT` /
+  `DSH_PROFILE` を渡し、JSON で結果を返す。配置は `setup`（任意で `--install`）でのみ行う。
+- **macOS リモートの差分**: `setsid` が無いため `nohup` で起動し、停止は pidfile と
+  `lsof` / `pgrep` で子孫を終了する。ポート検出は `ss` → `netstat` → `lsof` の順
+  （macOS の `netstat` は `127.0.0.1.3080` のようにドット表記になる）。
+- Windows リモートの `agent.ps1` は BOM 付き UTF-8 で配置し、`schtasks + wscript` で
+  非表示起動する（Windows 版と同じ）。
+
+### 13.6 認証 URL
+
+- dsh web の起動ログ（末尾 256 KB）から `dsh web: <url>?token=…` を新しい順に最大 6 件拾う。
+- 各候補を `http://127.0.0.1:<port>/?token=…` に GET し、**3xx + `Set-Cookie: dsh-auth-…`**
+  を返すものだけ採用する。検証クライアントは Cookie を保持せず、リダイレクトも追わない
+  （Cookie を持つと古いトークンでも 303 になるため。Windows 版の実測知見を踏襲）。
+- 起動直後はトークン行が揃うまで最大 10 秒リトライする。
+- 表示 URL は `hosts.json` の `url` → ログの非ループバック URL → `http://127.0.0.1:<port>/`
+  の順。ローカル URL も併記する。トークンは保存しない。
+- 対象はランチャー経由で起動したローカル DSH のみ（リモートは未対応）。
+
+### 13.7 PWA（Web アプリ）
+
+- macOS では Chromium 系ブラウザがインストールした Web アプリを
+  `~/Applications/<Browser> Apps.localized/<name>.app` として保存する。
+  `Contents/Info.plist` の `CrAppModeShortcutID` / `CrAppModeShortcutURL` /
+  `CrAppModeShortcutName` を読む（ブラウザ内部 DB は読まない）。
+- 一致判定は start URL（origin + ディレクトリ）または app id。app id は manifest id の
+  **二重 SHA-256** の先頭 16 バイトを a–p に写像した 32 文字（Windows 版と同じ。
+  `http://127.0.0.1:3080/` → `hgiemfgfjhalibdoboikeiepnnjapnpc`）。
+- インストール済みなら `/usr/bin/open -a <bundle>`。未インストールなら既定ブラウザで URL を
+  開き、インストール手順を案内するだけ（勝手にインストールしない）。
+- **未対応**: 初回認証（401）用クッキーの再生成・ブラウザへの設定（Windows 版 `PwaAuth.cs`）。
+  Mac 版 v0.1 では認証 URL をブラウザで開いて認証する運用にする。
+
+### 13.8 データの場所
+
+| 種類 | 場所 |
+|---|---|
+| 設定 | `~/Library/Application Support/DshLauncher/hosts.json` |
+| 起動ログ / アプリログ | `~/Library/Application Support/DshLauncher/logs/` |
+| 起動スクリプト | `~/Library/Application Support/DshLauncher/run/` |
+| LaunchAgent | `~/Library/LaunchAgents/io.github.aosy0.dshlauncher.start-<id>.plist` |
+| リモートヘルパー | リモートの `~/.dsh/dshl/agent.sh` / `agent.ps1` |
+
+### 13.9 決定事項
+
+- 実装は**ネイティブ SwiftUI + AppKit**。.NET/Avalonia への移植はしない（UI の再現度より
+  macOS の作法を優先）。
+- ローカル起動は **launchd**（子プロセス起動でも cron でもない）。`RunAtLoad` 無効 +
+  `kickstart` により「明示的に起動したときだけ動く」を守る。
+- メニューバーは **NSStatusItem**、ウィンドウは SwiftUI。Dock アイコンも出す（常駐の
+  発見しやすさを優先）。
+- PWA 検出は **.app バンドルの plist のみ**。ブラウザの Cookie DB や内部 DB は読まない。
+- 認証 URL の検証は **Cookie を保持しない**（古いトークンの誤判定を防ぐ）。
+- Mac 版は**自動更新なし**。更新はビルドし直す。Windows 版の exe 自己更新は持ち込まない。
+- UI の自動検証は SSH からの `screencapture` が TCC で失敗するため、プロセス・ログ・
+  HTTP 応答で行う。実画面の確認は人手で行う。
+
+---
+
 *デザインは unslop（Damir Sokolovsky, CC BY 4.0）の手順に従って作成。*
 

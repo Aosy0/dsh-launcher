@@ -3,6 +3,8 @@
 DeepSeek Harness（dsh）を、このPCとリモートマシンで起動・再起動・停止・状態確認するための
 Windows デスクトップアプリ（WPF / .NET 9）＋ CLI（`dshl`）。同じ exe が GUI と CLI を兼ねる。
 
+macOS 版（SwiftUI メニューバーアプリ＋CLI）も同じリポジトリの [mac/](mac/README.md) にあります。
+
 > 非公式のサードパーティ製ランチャーです。DeepSeek 公式の製品ではなく、DeepSeek による承認・提携・サポートはありません。
 > 「DeepSeek Harness」は DeepSeek の登録商標で、本プロジェクトでは互換性の説明にのみ使用しています。
 > 詳細は [ライセンスと非公式について](#ライセンスと非公式について)。
@@ -57,6 +59,24 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
    ```powershell
    & "$env:LOCALAPPDATA\Programs\DshLauncher\dshl.exe" status --json
    ```
+
+## macOS 版（v0.1.0 / 2026-11-13）
+
+macOS 向けに、メニューバー常駐の SwiftUI アプリと CLI（`dshl`）を `mac/` に実装しました。
+Windows 版（WPF）とはコードを共有せず、launchd・`open`・`~/Applications` の Web アプリなど
+macOS の作法で作り直しています。
+
+- ビルド: `cd mac && ./build.sh`（Xcode Command Line Tools が必要）
+- インストール: `./install.sh`（`~/Applications/DSH Launcher.app` と `~/.local/bin/dshl`。sudo 不要）
+- ローカル起動は LaunchAgent（`RunAtLoad` 無効 + `kickstart`）。ランチャーを閉じても dsh は残る
+- リモートは Windows 版と同じ SSH + ヘルパー方式（`agent.sh` / `agent.ps1`）
+- PWA は `~/Applications/*.localized` の `.app` を検出して `open -a`。認証 URL も発行可能
+- 未署名（ad-hoc）・自動更新なし・PWA の初回認証自動化は未対応
+
+![macOS UI](design/mac-v1.png)
+
+使い方・制限・開発手順は [mac/README.md](mac/README.md)、設計は [DESIGN.md](DESIGN.md) の
+「13. macOS 版」を参照してください。
 
 ## ドキュメント
 
@@ -306,6 +326,10 @@ dsh-launcher/
 │  ├─ Cli.cs              # dshl サブコマンド
 │  ├─ Ui.cs               # 一覧ウィンドウ・トレイ・テーマ
 │  └─ Dialogs.cs          # 確認・名前変更・マシン追加・ログ
+├─ mac/                   # macOS 版（SwiftUI + AppKit + CLI）
+│  ├─ build.sh            # .app / dshl / zip を生成
+│  ├─ install.sh          # ~/Applications と ~/.local/bin に配置
+│  └─ Sources/DshLauncherMac/  # launchd・SSH・認証URL・PWA・UI
 └─ dist/dshl.exe          # ビルド済み単一ファイル（.NET 9 Desktop Runtime 使用）
 ```
 
@@ -329,6 +353,7 @@ dsh-launcher/
 | このPC（nzxt(local)） | Windows | v24.18.0 | 0.2.2-rc.1 | 稼働中 |
 | minipc-server | Linux | v24.13.0 | 0.2.2-rc.1 | 停止（セットアップ・起動/停止まで実機確認） |
 | cpswhitegtx1080ti | Windows | v26.13.0 | 0.2.2-rc.1 | 停止（セットアップ・起動/停止まで実機確認） |
+| macbook（MacBoooook Air!） | macOS 27.0.1 | v24.16.0 | 0.2.2-rc.1 | 稼働中（macOS 版・launchd 管理で実機確認） |
 
 
 

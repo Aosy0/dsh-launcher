@@ -221,5 +221,107 @@ dotnet publish -c Release -r win-x64 --self-contained false `
 - GUI からのリモートセットアップ実行の実機確認（CLI では検証済み）
 - アプリ終了時にトレイを残すか終了するかの設定
 
+## macOS 版（mac/）
+
+Windows 版と同じ機能を SwiftUI + AppKit で実装したもの。設計は [DESIGN.md](../DESIGN.md)
+「13. macOS 版」、使い方は [mac/README.md](../mac/README.md)。
+
+### ビルドと配置
+
+```sh
+# Mac 実機（ssh macbook、Apple M1 / macOS 27.0.1 / Xcode 27.2）
+cd mac
+./build.sh              # dist/DSH Launcher.app / dist/dshl / dist/DSHLauncher-mac-<arch>.zip
+./install.sh            # ~/Applications と ~/.local/bin/dshl に配置
+./uninstall.sh [--purge]
+```
+
+- Windows からは `scp -r mac macbook:~/dsh-launcher/` で同期してから
+  `cd ~/dsh-launcher/mac && ./build.sh`。`mac/.build/` と `mac/dist/` は git 管理外。
+- Swift のビルドは Mac 実機で行う（Windows に Swift ツールチェーンはない）。
+- アイコンは `mac/Support/AppIcon-1024.png`（Windows 版 `app.ico` と同じ意図）から
+  `sips` + `iconutil` で生成。`app.ico` を変えたら `python tools/make-mac-icon.py` で
+  PNG も作り直す（Pillow が必要。PNG はコミットする）。
+- 署名は ad-hoc のみ（`codesign --force --sign -`）。公証はしない。
+- バージョンは `mac/Support/Info.plist` の `__VERSION__` を `build.sh` が置換（既定 0.1.0）。
+
+### 構成
+
+| ファイル | 役割 |
+|---|---|
+| `Entry` 相当（`main.swift`） | GUI / CLI 分岐。GUI は**同期トップレベル**から `MainActor.assumeIsolated` で開始 |
+| `App.swift` | NSStatusItem（メニューバー）・NSWindow・メインメニュー |
+| `AppState.swift` | 5秒ポーリング、操作、シート状態、集計 |
+| `Model.swift` | Machine / hosts.json / 状態 / Paths |
+| `CLI.swift` | `dshl` サブコマンド + 開発用 `snapshot` |
+| `LocalMachine.swift` | LaunchAgent の生成・bootstrap/kickstart・停止・ログ |
+| `RemoteMachine.swift` | SSH プローブ、ヘルパー配置、操作、ログ |
+| `AgentScripts.swift` | `agent.sh` / `agent.ps1`（raw string） |
+| `RemoteSetup.swift` | Node 24.9+ / dsh のセットアップ |
+| `DshResolver.swift` | nvm / npm-global / Homebrew / ポータブル Node の解決 |
+| `AuthURL.swift` | `dsh web:` ログの token 検証と URL 発行 |
+| `BrowserApp.swift` | `~/Applications/*.localized` の Web アプリ検出・起動 |
+| `UI/` | Theme / Components / MainView / Dialogs |
+
+### 落とし穴（再発しやすい）
+
+1. **`NSApplication.run()` を MainActor タスク内で呼ばない**
+   - `@main` の async main から `MainActor.run { AppMain.run() }` すると、MainActor タスクが
+     戻らず、`AppState.startPolling()` の `Task` が永久に実行されない（UI は出るが状態が
+     更新されない）。`main.swift` の同期トップレベルから `MainActor.assumeIsolated` で開始する。
+2. **`NSApplication.delegate` は弱参照**
+   - `AppMain.retainedDelegate` で強参照する。保持しないと起動後に AppDelegate が解放される。
+3. **launchd は GUI アプリの PATH を継承しない**
+   - 起動スクリプトで `PATH` を明示し、nvm / `~/.npm-global/bin` / `/opt/homebrew/bin` /
+     `~/.dsh/runtime/node` から Node 24.9+ と dsh を解決する。`RunAtLoad` は無効。
+4. **macOS の `netstat -ltn` は `127.0.0.1.3080`（ドット区切り）**
+   - ポート判定は `[:.]$PORT` でマッチし、`ss` が無い環境では `lsof` も使う。
+5. **`setsid` / `ss` / `stat -c` / `timeout` は macOS に無い**
+   - リモート `agent.sh` は nohup + pgrep/lsof で停止。検証コマンドで `timeout` を使わない。
+6. **SSH からの `screencapture` は TCC で失敗**
+   - UI 検証は `logs/app.log`・`lsappinfo`・HTTP 401/303・`dshl snapshot` で行う。
+7. **token は起動ログに平文で残る**
+   - `~/Library/Application Support/DshLauncher/logs/<id>.log` は 0600、フォルダは 0700。
+     共有時は `?token=` を伏せる。
+8. **PWA 検出は Windows と別方式**
+   - Windows の `Web Applications\_crx_<id>` は macOS には無い。`~/Applications/<ブランド>
+     Apps.localized/*.app/Contents/Info.plist` の `CrAppModeShortcutID` / `URL` を読む。
+     app id は manifest id の二重 SHA-256 → a–p（`http://127.0.0.1:3080/` は
+     `hgiemfgfjhalibdoboikeiepnnjapnpc`）。
+
+### テスト手順（本番 3080 を触らない）
+
+```sh
+# ラボ: 別 DSH_HOME・別ポート
+mkdir -p ~/.dsh-lab/profiles && cp -R ~/.dsh/profiles/web ~/.dsh-lab/profiles/labweb
+cat > /tmp/dshl-lab.json <<'EOF'
+{"version":1,"machines":[{"id":"lab","kind":"Local","name":"lab","sshAlias":null,
+ "platform":"auto","profile":"labweb","port":3090,"url":null,"pinned":true,
+ "environment":{"DSH_HOME":"/Users/<you>/.dsh-lab"}}]}
+EOF
+dshl start lab --config /tmp/dshl-lab.json --json
+dshl status lab --config /tmp/dshl-lab.json --json   # 稼働中 / PID
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3090/   # 401
+dshl auth-url --config /tmp/dshl-lab.json --json      # ok + token
+dshl restart lab --config /tmp/dshl-lab.json --json   # PID が変わる
+dshl stop lab --config /tmp/dshl-lab.json --json      # ポートが閉じ、plist が消える
+```
+
+- リモート: `ssh minipc`（Linux）と `ssh cps`（Windows）が Mac から通る。
+  `dshl status` / `logs` / `setup` / `start` / `stop` を確認済み。minipc の HTTP は
+  SSH 越しに `curl http://127.0.0.1:3080/` で 401。
+- PWA 検出: `~/Applications/Chrome Apps.localized/<name>.app/Contents/Info.plist` に
+  `CrAppModeShortcutID` / `CrAppModeShortcutURL` を持つ偽アプリを作り、
+  `dshl pwa --json` が検出することを確認（確認後は削除）。
+- UI: `dshl snapshot /tmp/ui.png` でオフスクリーン描画。`design/mac-v1.png` はこの出力。
+  実画面の確認は人手（SSH からは TCC で不可）。
+
+### 配布
+
+- 現状は Mac 実機でビルドした `.app` / zip を `~/Applications` に置く運用。
+- GitHub Releases へ載せる場合は、Windows の `release.yml` とは別に macOS ランナーで
+  `mac/build.sh` を実行し、`DSHLauncher-mac-<arch>.zip` を添付する（未対応。必要になったら追加）。
+- 署名・公証は未対応。配布時は README の Gatekeeper 手順を添える。
+
 
 

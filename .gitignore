@@ -14,3 +14,8 @@ __pycache__/
 *.pyc
 
 # dist/ is tracked on purpose: it holds the shipped single-file exe (`dist/dshl.exe`).
+
+# macOS SwiftPM app (build output is generated with mac/build.sh)
+mac/.build/
+mac/dist/
+

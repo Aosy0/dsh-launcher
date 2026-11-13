@@ -1,7 +1,8 @@
 # DSH Launcher — エージェント引き継ぎ
 
-Windows 用の dsh（DeepSeek Harness）ランチャー。WPF/.NET 9 アプリと CLI が同一 exe。
-作業ディレクトリはこのフォルダ。応対は日本語で行う。
+dsh（DeepSeek Harness）のランチャー。Windows 版は WPF/.NET 9 アプリと CLI が同一 exe、
+macOS 版は SwiftUI + AppKit のメニューバーアプリと CLI（`mac/`）。作業ディレクトリはこのフォルダ。
+応対は日本語で行う。
 
 ## 必ず守ること
 
@@ -45,10 +46,37 @@ Windows 用の dsh（DeepSeek Harness）ランチャー。WPF/.NET 9 アプリ�
   UI はステータスバーの「v<ver> に更新」とトレイ通知、CLI は `dshl update [--check]`。
   更新先に書き込めない/別インスタンスが起動中なら実行しない。
 
+## macOS 版（mac/）
+
+- 実装は **SwiftUI + AppKit のメニューバーアプリ + CLI（同一バイナリ）**。Windows 版とコードは共有しない。
+  設計は [DESIGN.md](DESIGN.md) の「13. macOS 版」、使い方は [mac/README.md](mac/README.md)。
+- **ビルド・実機検証は Mac**（`ssh macbook`、Apple M1 / macOS 27.0.1 / Xcode 27.2）で行う。
+  Windows の `mac/` を scp して `~/dsh-launcher/mac` で `./build.sh`。`mac/.build/` と `mac/dist/` は
+  git 管理外（zip は配布時に Release 添付）。
+- ローカル起動は **ユーザー LaunchAgent**
+  （`~/Library/LaunchAgents/io.github.aosy0.dshlauncher.start-<id>.plist`）で、
+  `RunAtLoad` 無効 + `launchctl bootstrap` → `kickstart -k`。停止は `bootout` → ポート占有 PID の
+  子孫を終了 → plist 削除。Windows の Task Scheduler + wscript に相当する。
+  **`dsh web` を直接バックグラウンド起動しない**（SSH セッション終了で落ちる）。
+- 起動ログは `~/Library/Application Support/DshLauncher/logs/<id>.log`。認証 URL はこのログの
+  `dsh web:` 行だけを根拠にし、**3xx + `Set-Cookie: dsh-auth-…`** で検証する。検証クライアントは
+  Cookie を保持せずリダイレクトも追わない（古いトークンの誤判定を防ぐ）。トークンは保存しない。
+- PWA は `~/Applications` の `Chrome Apps.localized` などの `.app` の Info.plist
+  （`CrAppModeShortcutID` / `CrAppModeShortcutURL`）で検出して `open -a`。ブラウザ内部 DB は読まない。
+  PWA の初回認証（Cookie 再生成）は未実装。
+- Mac 版のバージョンは `mac/Support/Info.plist` の `__VERSION__` を `build.sh` が置換（既定 0.1.0）。
+  Windows の `<Version>` とは独立。**リリース指示があるまで上げない**。
+- Mac 実機の GUI 検証は、SSH からの `screencapture` が TCC で失敗するため、`logs/app.log`・
+  プロセスの存在・HTTP 401/303・`lsappinfo` で行う。画面確認は人手。
+- Mac 上の dsh は `~/.npm-global/bin/dsh`（nvm の Node 24.16.0 を直接呼ぶラッパー）。
+  ローカル 3080 はランチャー（launchd）管理。検証用ラボは `--config /tmp/dshl-lab.json` と
+  `~/.dsh-lab`（port 3090 / profile labweb）を使い、本番 3080 を触らない。
+
 ## 詳細ドキュメント
 
 | 内容 | 場所 |
 |---|---|
 | 使い方・現状・実測 | [README.md](README.md) |
+| macOS 版の使い方・ビルド | [mac/README.md](mac/README.md) |
 | 設計・決定事項・デザイン | [DESIGN.md](DESIGN.md) |
 | 開発手順・構成・トラブルシュート | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
