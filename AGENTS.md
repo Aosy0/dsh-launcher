@@ -52,7 +52,8 @@ macOS 版は SwiftUI + AppKit のメニューバーアプリと CLI（`mac/`）�
 - 実装は **SwiftUI + AppKit のメニューバーアプリ + CLI（同一バイナリ）**。Windows 版とコードは共有しない。
   設計は [DESIGN.md](DESIGN.md) の「13. macOS 版」、使い方は [README.md](README.md)（プラットフォーム別の節）。
 - **ビルド・実機検証は Mac**（`ssh macbook`、Apple M1 / macOS 27.0.1 / Xcode 27.2）で行う。
-  Windows の `mac/` を scp して `~/dsh-launcher/mac` で `./build.sh`。`mac/.build/` と `mac/dist/` は
+  Windows の `mac/` と `src/DshLauncher/DshLauncher.csproj`（バージョンの情報源）を scp して
+  `~/dsh-launcher/mac` で `./build.sh`。`mac/.build/` と `mac/dist/` は
   git 管理外（zip は配布時に Release 添付）。
 - ローカル起動は **ユーザー LaunchAgent**
   （`~/Library/LaunchAgents/io.github.aosy0.dshlauncher.start-<id>.plist`）で、

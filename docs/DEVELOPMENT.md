@@ -240,8 +240,14 @@ cd mac
 ./uninstall.sh [--purge]
 ```
 
-- Windows からは `scp -r mac macbook:~/dsh-launcher/` で同期してから
-  `cd ~/dsh-launcher/mac && ./build.sh`。`mac/.build/` と `mac/dist/` は git 管理外。
+- Windows からは `scp -r mac macbook:~/dsh-launcher/` で同期し、バージョンのために
+  `src/DshLauncher/DshLauncher.csproj` も置いてから
+  `cd ~/dsh-launcher/mac && ./build.sh` を実行する:
+  ```sh
+  ssh macbook 'mkdir -p ~/dsh-launcher/src/DshLauncher'
+  scp src/DshLauncher/DshLauncher.csproj macbook:~/dsh-launcher/src/DshLauncher/
+  ```
+  `mac/.build/` と `mac/dist/` は git 管理外。
 - Swift のビルドは Mac 実機で行う（Windows に Swift ツールチェーンはない）。
 - アイコンは `mac/Support/AppIcon-1024.png`（Windows 版 `app.ico` と同じ意図）から
   `sips` + `iconutil` で生成。`app.ico` を変えたら `python tools/make-mac-icon.py` で
