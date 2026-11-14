@@ -47,6 +47,9 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 
 - `%LOCALAPPDATA%\Programs\DshLauncher\dshl.exe` に配置し、スタートメニューに「DSH Launcher」を追加する
 - 配布物の SHA256 を `SHA256SUMS.txt` と照合してから配置する
+- **インストール版から起動する**。リポジトリ内の `dist\dshl.exe` から起動すると、DSH のワークスペースが
+  Windows サンドボックスで保護されている環境では Low 整合性で動作し、DSH の起動／停止／更新が
+  失敗することがある（インストール版はワークスペース外なので通常の権限で動く）
 - 更新: 同じコマンドを再実行、または `& "$env:LOCALAPPDATA\Programs\DshLauncher\update.cmd"`
 - アンインストール（設定・ログも消すなら `-Purge`）:
   ```powershell

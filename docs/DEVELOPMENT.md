@@ -260,6 +260,7 @@ macOS 版も同じ `<Version>` を `mac/build.sh` が読む（個別のバージ
 | DSH の「更新」マークが出ない | `dshl dsh-update --check --json` の `current` / `latest` を確認。npm レジストリに到達できるか、`%APPDATA%\npm\node_modules\@deepseek-ai\dsh\package.json` があるか（無ければ `dsh --version` にフォールバック） |
 | DSH の更新が「npm install に失敗」 | `%APPDATA%\DshLauncher\logs\dsh-update.log` の末尾を確認。`npm` が PATH か `%ProgramFiles%\nodejs\npm.cmd` にあるか。DSH は元の版で起動し直している |
 | DSH の更新が「別の場所の dsh が優先」 | インストール先（npm prefix）と起動している `dsh.cmd` がずれている。`where dsh` と `npm config get prefix` を比べる |
+| 更新が「停止に失敗したため更新しませんでした（port still in use）」 | ランチャーが DSH のワークスペース（例: `dsh-launcher\dist`）の中から起動され、Windows サンドボックスで **Low 整合性**になっている。Low からは Medium の DSH を `taskkill` できず（"not found"）、`schtasks` の作成・実行・終了も拒否される。`%LOCALAPPDATA%\Programs\DshLauncher\dshl.exe`（ワークスペース外）から起動する。判別はフォルダの `icacls` に `Mandatory Label\Low` があるか、起動したプロセスの整合性（Medium=8192 / Low=4096） |
 ## 既知の未対応
 
 - URL（Tailscale）の設定 UI（今は `hosts.json` の `url` を直接編集）
