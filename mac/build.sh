@@ -2,7 +2,7 @@
 # Build the macOS app bundle and CLI wrapper.
 #
 #   ./build.sh            # release build -> dist/DSH Launcher.app + dist/dshl + zip
-#   VERSION=0.1.16 ./build.sh   # override (normally read from the Windows csproj)
+#   VERSION=0.1.17 ./build.sh   # override (normally read from the Windows csproj)
 #
 # The version is shared with the Windows app: src/DshLauncher/DshLauncher.csproj
 # is the single source of truth, and this script reads its <Version>.
