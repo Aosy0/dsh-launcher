@@ -2,7 +2,7 @@
 
 DeepSeek Harness（`dsh`）を、この PC とリモートマシンで起動・再起動・停止・状態確認するための
 デスクトップアプリ＋ CLI（`dshl`）。Windows 版は WPF / .NET 9、macOS 版は SwiftUI / AppKit で、
-**同じバージョン（v0.1.17）と同じ CLI 語彙**を提供します。プラットフォームごとの違いはこの
+**同じバージョン（v0.1.18）と同じ CLI 語彙**を提供します。プラットフォームごとの違いはこの
 README 内に併記しています。
 
 > 非公式のサードパーティ製ランチャーです。DeepSeek 公式の製品ではなく、DeepSeek による承認・提携・サポートはありません。
@@ -213,7 +213,7 @@ dsh web は起動時に一度だけ `dsh web: <url>?token=...` を出力する�
 
 ### バージョン
 
-`src/DshLauncher/DshLauncher.csproj` の `<Version>` が**唯一の情報源**です（現在 `0.1.17`）。
+`src/DshLauncher/DshLauncher.csproj` の `<Version>` が**唯一の情報源**です（現在 `0.1.18`）。
 
 - Windows: UI 右下と `dshl --version` がアセンブリのバージョンを表示する。
 - macOS: `mac/build.sh` が csproj の `<Version>` を読み、`CFBundleShortVersionString` /
@@ -249,7 +249,7 @@ dshl --version
 - `--config <path>` で別の `hosts.json` を使える（ラボ検証用）。
 - 終了コード: `0` 成功 / `1` エラー / `2` 変更なし / `3` 到達不可 / `4` 要セットアップ。
 
-## 実装状況（v0.1.17 / 2026-11-15）
+## 実装状況（v0.1.18 / 2026-11-15）
 
 | 機能 | Windows | macOS |
 |---|---|---|
@@ -340,7 +340,7 @@ macOS 版は v0.1.16 が初版です。以下はプラットフォームごと�
 
 ### Windows 版
 
-#### 未リリース
+#### v0.1.18
 
 - **DSH 本体の更新でプレリリースも検知するようにした。** npm の dist-tags（`latest` / `next` / `alpha` …）を
   すべて取得し、semver で最も新しい版を候補にする（同値なら `latest` を優先）。
