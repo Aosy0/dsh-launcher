@@ -249,6 +249,7 @@ macOS 版も同じ `<Version>` を `mac/build.sh` が読む（個別のバージ
 
 | 更新が「別の DSH Launcher が起動中」で止まる | 他のランチャー（トレイ常駐）を終了してから再実行。同一 exe がロックされている |
 | 更新後に起動しない | %TEMP%\dshl-update-* の状態を確認。exe が差し替わっていれば手動起動で復帰可能。ウイルス対策が exe をロックしていないか確認 |
+| ビルドし直した exe で SmartScreen の確認が出る | 未署名でハッシュが変わるため（旧 exe の評価は引き継がれない）。「詳細情報」→「実行」で進む。恒久対策はコード署名（未対応）。Defender の検出ではないことは `Get-MpThreatDetection` と `MpCmdRun -Scan -ScanType 3 -File <exe>` で確認できる |
 | DSH の「更新」マークが出ない | `dshl dsh-update --check --json` の `current` / `latest` を確認。npm レジストリに到達できるか、`%APPDATA%\npm\node_modules\@deepseek-ai\dsh\package.json` があるか（無ければ `dsh --version` にフォールバック） |
 | DSH の更新が「npm install に失敗」 | `%APPDATA%\DshLauncher\logs\dsh-update.log` の末尾を確認。`npm` が PATH か `%ProgramFiles%\nodejs\npm.cmd` にあるか。DSH は元の版で起動し直している |
 | DSH の更新が「別の場所の dsh が優先」 | インストール先（npm prefix）と起動している `dsh.cmd` がずれている。`where dsh` と `npm config get prefix` を比べる |

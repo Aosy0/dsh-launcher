@@ -60,6 +60,8 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 - .NET 9 Desktop Runtime が入っている場合は軽量版 `dshl-<version>-win-x64-framework-dependent.exe`（約 0.5MB）も使える。
 - 未署名の exe のため、初回は SmartScreen の「Windows によって PC が保護されました」が出ることがある。
   「詳細情報」→「実行」で進む。
+- **ビルドし直して `dist\dshl.exe` を差し替えたときも同じ確認が出る**（署名していないため、ファイルの
+  ハッシュが変わると評価がリセットされる）。Defender の検出ではない。
 
 ### macOS
 
