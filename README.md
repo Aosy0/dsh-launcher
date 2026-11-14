@@ -141,6 +141,18 @@ cd mac
 `~/.dsh/runtime/node` から Node 24.9+ と dsh を解決して PATH を明示する。ログ
 （`?token=` を含む）は 0600、アプリのデータフォルダは 0700。
 
+### DSH 本体の更新（Windows）
+
+ランチャー自身の更新（アプリ内更新）とは別に、起動対象の `@deepseek-ai/dsh` も GUI から更新できる。
+
+- 起動直後と 6 時間ごとに npm の `latest` を確認し、インストール済みより新しければローカル行に
+  「更新」バッジ、ステータスバーに `DSH <version> に更新` を出す。
+- 選択したローカル行の詳細に `0.2.2-rc.1 → 0.2.2-rc.3` と「DSH を更新」ボタン。トレイからも実行できる。
+- 更新は **停止 → `npm install -g @deepseek-ai/dsh@<version>`（版を固定）→ 検証 → 起動**。
+  稼働していなかった場合は起動しない。失敗したら元の版で起動し直し、理由を表示する。
+  ログは `%APPDATA%\DshLauncher\logs\dsh-update.log`。
+- 対象は**この PC（ローカル）のみ**。リモートは「DSH をセットアップ…」で導入する（macOS 版は未対応）。
+
 ### リモート
 
 `~/.ssh/config` の Host エイリアスをそのまま使う。認証は鍵 / ssh-agent のみで、パスワードは保存しない
@@ -191,6 +203,7 @@ dsh web は起動時に一度だけ `dsh web: <url>?token=...` を出力する�
 | 起動スクリプト | `%APPDATA%\DshLauncher\run\<id>.cmd` / `.vbs` | `~/Library/Application Support/DshLauncher/run/<id>.sh` |
 | スケジューラ | タスク `DshLauncher\start-<id>` | LaunchAgent `io.github.aosy0.dshlauncher.start-<id>.plist` |
 | PWA 認証の記憶 | `%APPDATA%\DshLauncher\pwa-auth.json` | なし |
+| DSH 更新ログ | `%APPDATA%\DshLauncher\logs\dsh-update.log` | なし |
 | リモートヘルパー | `~/.dsh/dshl/agent.ps1` | `~/.dsh/dshl/agent.sh` |
 
 ### バージョン
@@ -218,11 +231,14 @@ dshl remove <machine>
 dshl open [machine] [--dry-run]
 dshl pwa [--open] [--dry-run] [--json]
 dshl auth-url [machine] [--copy] [--open] [--json]
+dshl dsh-update [--check] [--dry-run] [--json]
 dshl gui
 dshl --version
 ```
 
 - Windows のみ: `dshl update [--check] [--dry-run] [--json]`（アプリ内更新）。
+- Windows のみ: `dshl dsh-update [--check] [--dry-run] [--json]`（DSH 本体の更新。`--check` は確認だけ、
+  `--dry-run` は実行内容の表示）。更新の必要がなければ終了コード `2`。
 - macOS の開発用: `dshl snapshot <out.png>`（一覧をオフスクリーン描画。SSH から `screencapture` が
   使えない環境の確認用。ユーザー向け機能ではない）。
 - `--config <path>` で別の `hosts.json` を使える（ラボ検証用）。
@@ -247,6 +263,7 @@ dshl --version
 | PWA を開く（Web アプリ検出・起動） | ✅ 実機確認（初回認証も自動） | ✅ 検出・起動（初回認証の自動化は未対応） |
 | 新しいブラウザの認証 URL（`?token=` 付き）の発行 | ✅ 実機確認 | ✅ 実機確認 |
 | アプリ内更新（通知 → ダウンロード → 置き換え → 再起動） | ✅ 実装・実機確認 | — |
+| DSH 本体の更新（npm の latest 確認 → 停止 → インストール → 起動） | ✅ 実装（未リリース） | — |
 | 配布（Release / インストーラ / アイコン） | ✅ v0.1.10 から | ✅ .app / zip / `install.sh` |
 | URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 | ⏳ 次段 |
 
@@ -284,6 +301,7 @@ dsh-launcher/
 │  ├─ PwaAuth.cs          # PWA の初回認証（署名クッキー発行・ブラウザ設定）
 │  ├─ AuthUrl.cs          # 新しいブラウザの認証 URL
 │  ├─ Update.cs           # アプリ内更新
+│  ├─ DshUpdate.cs        # DSH 本体の更新（npm latest の確認・停止/インストール/起動）
 │  ├─ Cli.cs              # dshl サブコマンド
 │  ├─ Ui.cs / Dialogs.cs  # 一覧・トレイ・確認ダイアログ
 │  └─ app.ico
@@ -316,6 +334,19 @@ macOS 版は v0.1.16 が初版です。以下はプラットフォームごと�
 - **未対応**: アプリ内更新、PWA 初回認証の自動化、リモートの認証 URL、公証（ad-hoc 署名のみ）。
 
 ### Windows 版
+
+#### 未リリース
+
+- **DSH 本体を GUI から更新できるようにした。** npm の `latest` とインストール済みの版を比べ、
+  新しければローカル行に「更新」バッジ、ステータスバーに `DSH <ver> に更新` を表示する。
+  - 選択中のローカル行の詳細に `0.2.2-rc.1 → 0.2.2-rc.3` と「DSH を更新」ボタン。確認ダイアログに
+    実行する `npm install -g @deepseek-ai/dsh@<ver>` を出す。
+  - 更新は停止 → `npm install -g`（版を固定）→ 版の検証 → 起動。稼働していなければ起動しない。
+    失敗時は元の版で起動し直し、npm 出力の末尾を添える。出力は `logs\dsh-update.log` に残す。
+  - トレイに「DSH <ver> に更新…」「DSH の更新を確認…」、CLI に `dshl dsh-update [--check] [--dry-run] [--json]`。
+  - 対象はローカルのみ（リモートは `setup --install`、macOS 版は未対応）。
+- 読み取り専用の CLI コマンド（`status` / `dsh-update --check` など）は、設定ディレクトリに書き込めなくても
+  失敗扱いにしないようにした（終了コードはコマンドの結果のまま）。
 
 #### v0.1.16
 

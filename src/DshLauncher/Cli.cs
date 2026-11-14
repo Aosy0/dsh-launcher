@@ -139,10 +139,24 @@ internal static class Cli
                 "pwa" => Pwa(config, options),
                 "auth-url" or "token" => AuthUrl(config, options, target),
                 "update" => Update(options),
+                "dsh-update" or "dshupdate" => DshUpdate(config, options),
                 "gui" => 0,
                 _ => Unknown(command),
             };
-            if (positionals.Count > 0 || options.Config is not null) config.Save(options.Config);
+            // Persisting the config is a side effect of the commands that change it; read-only
+            // commands tolerate an unwritable config (another instance may hold it, or the user
+            // may run the CLI against a read-only profile).
+            if (positionals.Count > 0 || options.Config is not null)
+            {
+                if (IsReadOnlyCommand(command))
+                {
+                    try { config.Save(options.Config); } catch { /* the scan result already printed */ }
+                }
+                else
+                {
+                    config.Save(options.Config);
+                }
+            }
             return code;
         }
         catch (Exception error)
@@ -594,12 +608,107 @@ internal static class Cli
         return result.Ok ? 0 : 1;
     }
 
+    /// <summary>Checks npm for a newer @deepseek-ai/dsh and updates the local install (stop → install → start).</summary>
+    private static int DshUpdate(LauncherConfig config, Options options)
+    {
+        var machine = config.LocalMachine;
+        var info = DshUpdates.CheckAsync().GetAwaiter().GetResult();
+        if (info.Current is null || info.Latest is null)
+        {
+            if (options.Json)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    current = info.Current,
+                    latest = info.Latest,
+                    available = false,
+                    error = info.Error,
+                }, Json.Options));
+            }
+            Fail(info.Error ?? "DSH のバージョンを確認できませんでした");
+            return 1;
+        }
+
+        var running = Ports.ListenerPid(machine.Port) is not null;
+        var command = DshUpdates.InstallCommandLine(info.Latest);
+        if (!info.IsNewer)
+        {
+            if (options.Json)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    current = info.Current,
+                    latest = info.Latest,
+                    available = false,
+                    command,
+                }, Json.Options));
+            }
+            else
+            {
+                Console.WriteLine($"最新です（DSH {info.Current}）");
+            }
+            return 2;
+        }
+
+        if (options.Check || options.DryRun)
+        {
+            if (options.Json)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    current = info.Current,
+                    latest = info.Latest,
+                    available = true,
+                    running,
+                    command,
+                    npm = DshUpdates.NpmPath(),
+                }, Json.Options));
+            }
+            else
+            {
+                Console.WriteLine($"DSH {info.Latest} が利用可能です（現在 {info.Current}）");
+                Console.WriteLine(command);
+                if (options.DryRun)
+                {
+                    Console.WriteLine(running
+                        ? "実行内容: 停止 → npm install -g → 起動"
+                        : "実行内容: npm install -g（停止中なので起動しません）");
+                }
+            }
+            return 0;
+        }
+
+        var result = DshUpdates.InstallAsync(machine, info.Latest, line => Console.Error.WriteLine("dshl: " + line))
+            .GetAwaiter().GetResult();
+        if (options.Json)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                current = info.Current,
+                latest = info.Latest,
+                command,
+                ok = result.Ok,
+                message = result.Message,
+            }, Json.Options));
+        }
+        else
+        {
+            Console.WriteLine(result.Ok ? result.Message : $"failed: {result.Message}");
+        }
+        return result.Ok ? 0 : 1;
+    }
+
     private static int Unknown(string command)
     {
         Fail($"unknown command: {command}");
         PrintHelp();
         return 1;
     }
+
+    /// <summary>Commands whose config write is only a cache update (detected platform, filter state).</summary>
+    private static bool IsReadOnlyCommand(string command) => command is
+        "status" or "machines" or "list" or "url" or "logs" or "open" or "pwa" or "auth-url" or "token" or
+        "update" or "dsh-update" or "dshupdate" or "gui";
 
     private static Machine Resolve(LauncherConfig config, string? target)
     {
@@ -645,6 +754,9 @@ usage:
   dshl update [--check] [--dry-run] [--json]
                                 check GitHub Releases and update this exe in place
                                 (--check: report only; --dry-run: print the plan)
+  dshl dsh-update [--check] [--dry-run] [--json]
+                                check npm for a newer @deepseek-ai/dsh and update the
+                                local DSH (stop → npm install -g → start)
   --config <path>               use a different hosts.json
 
 exit codes: 0 ok / 1 error / 2 no change / 3 unreachable / 4 needs setup (helper / PWA)

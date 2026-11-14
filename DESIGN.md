@@ -356,6 +356,27 @@ B（単一マシン型・タブ切替）は**マシン数が増えると破綻�
 - **決定**: インストーラを呼ばず exe を直接置き換える（ポータブル配置でも更新できる）。
   署名は無いため、検証はリリースの SHA-256 で行う。
 
+### 12.2 DSH 本体の更新（未リリース / 2026-11-15）
+
+ランチャー自身（12.1）とは別に、起動対象の `@deepseek-ai/dsh`（この PC の npm グローバル）も
+GUI から更新できるようにする。
+
+- **確認**: `https://registry.npmjs.org/@deepseek-ai/dsh/latest` の `version` を取得し、インストール
+  済みの版（`dsh.cmd` の隣の `node_modules\@deepseek-ai\dsh\package.json`。読めないときだけ
+  `dsh --version`）と比較する。比較はプレリリース順序込みの semver
+  （`0.2.2-rc.1 < 0.2.2-rc.3 < 0.2.2`）。起動直後・6 時間ごと・手動で確認し、失敗はサイレント。
+- **マーク**: 新しければローカル行の名前に「更新」バッジ、ステータスバーに `DSH <ver> に更新`。
+- **操作**: 選択中のローカル行の詳細に `0.2.2-rc.1 → 0.2.2-rc.3` と「DSH を更新」ボタン。トレイに
+  `DSH <ver> に更新…` / `DSH の更新を確認…`、CLI に `dshl dsh-update [--check] [--dry-run] [--json]`。
+- **更新**: 稼働中なら停止 → `npm install -g @deepseek-ai/dsh@<確認した版>`（版を固定して再現性を
+  優先。最大 10 分）→ `package.json` を読み直して版を検証 → 稼働中だったときだけ起動。
+  失敗時は元の版で起動し直し、理由と npm 出力の末尾 6 行を返す。npm の出力は
+  `%APPDATA%\DshLauncher\logs\dsh-update.log` に残す。
+- **範囲**: ローカルマシンのみ。リモートはホストごとに npm prefix が違うため `setup --install` が
+  受け持つ。macOS 版は未対応（README の実装状況に記載）。
+- **試験用シーム**: Debug ビルドだけ `DSHL_DSH_LATEST`（最新版の差し替え）と `DSHL_DSH_NPM`
+  （npm の差し替え）を読む。リリースビルドには入らない。
+
 ---
 
 ## 13. macOS 版（v0.1.16 で追加 / 2026-11-13）
