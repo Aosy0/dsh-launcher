@@ -46,14 +46,16 @@ macOS 版は SwiftUI + AppKit のメニューバーアプリと CLI（`mac/`）�
   SHA256 検証してから、非表示 PowerShell ヘルパーで exe を差し替えて再起動する（インストーラは呼ばない）。
   UI はステータスバーの「v<ver> に更新」とトレイ通知、CLI は `dshl update [--check]`。
   更新先に書き込めない/別インスタンスが起動中なら実行しない。
-- **DSH 本体の更新**: `DshUpdate.cs`。npm レジストリの `latest` と、`dsh` シム隣の
-  `node_modules\@deepseek-ai\dsh\package.json` の版を比べる（読めない時だけ `dsh --version`）。
+- **DSH 本体の更新**: `DshUpdate.cs`。npm レジストリの **dist-tags**（`latest` / `next` / `alpha` …）から
+  最も新しい版を選び（プレリリースも対象）、`dsh` シム隣の
+  `node_modules\@deepseek-ai\dsh\package.json` の版と比べる（読めない時だけ `dsh --version`）。
+  チャネル名は UI に併記する（`0.2.2-rc.3（next）`）。
   新しければローカル行に「更新」バッジ、選択行の詳細に「DSH を更新」ボタン、ステータスバーに
   `DSH <ver> に更新`、トレイに更新項目、CLI は `dshl dsh-update [--check] [--dry-run] [--json]`。
   更新は**停止 → `npm install -g @deepseek-ai/dsh@<確認した版>`（版を固定）→ 検証 → 起動**
   （稼働していなかったら起動しない。失敗時は元の版で起動し直す）。確認は起動直後と6時間ごと。
   **ローカル専用**（リモートは `setup --install`）。macOS 版は未対応。Debug ビルドだけ
-  `DSHL_DSH_LATEST` / `DSHL_DSH_NPM` の試験用シームを持つ（リリースには入らない）。
+  `DSHL_DSH_TAGS` / `DSHL_DSH_NPM` の試験用シームを持つ（`DSHL_DSH_LATEST` は単一タグ用）。
 
 ## macOS 版（mac/）
 

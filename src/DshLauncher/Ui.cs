@@ -251,6 +251,7 @@ internal sealed class MainWindow : Window
     private UpdateInfo? _update;
     private string? _dshVersion;
     private string? _dshLatest;
+    private string? _dshChannel;
     private readonly TextBlock _updateText = UiKit.Text("", 10.5, Theme.Positive, family: Theme.Mono);
     private readonly Border _updateHost;
     private readonly TextBlock _dshUpdateText = UiKit.Text("", 10.5, Theme.Attention, family: Theme.Mono);
@@ -487,12 +488,21 @@ internal sealed class MainWindow : Window
             // A transient failure (offline registry, unreadable install) keeps the last known values,
             // so the badge does not flicker and the detail keeps showing the installed version.
             if (info.Current is not null) _dshVersion = info.Current;
-            if (info.Latest is not null) _dshLatest = info.Latest;
+            if (info.Target is not null)
+            {
+                _dshLatest = info.Target;
+                _dshChannel = info.Channel;
+            }
             UpdateDshUpdateUi();
             if (_busy.Count == 0) RebuildList();
             if (!manual) return;
             if (info.Error is not null) ConfirmWindow.Info(this, "DSH の更新", info.Error);
-            else if (info.IsNewer) ConfirmWindow.Info(this, "DSH の更新", $"DSH {info.Latest} が利用可能です（現在 {info.Current}）。");
+            else if (info.IsNewer)
+            {
+                var prerelease = DshUpdates.IsPrerelease(info.Target) ? "プレリリースです。" : "";
+                ConfirmWindow.Info(this, "DSH の更新",
+                    $"DSH {info.Target}{ChannelLabel(info.Channel)} が利用可能です（現在 {info.Current}）。{prerelease}");
+            }
             else ConfirmWindow.Info(this, "DSH の更新", $"最新です（DSH {info.Current}）。");
         }
         finally
@@ -507,7 +517,9 @@ internal sealed class MainWindow : Window
         {
             _dshUpdateText.Text = $"DSH {_dshLatest} に更新";
             _dshUpdateText.Foreground = Theme.Attention;
-            _dshUpdateHost.ToolTip = $"現在 {_dshVersion}。クリックで更新します。";
+            _dshUpdateHost.ToolTip = $"現在 {_dshVersion}。" +
+                                     $"{_dshLatest}{ChannelLabel(_dshChannel)} に更新します。" +
+                                     (DshUpdates.IsPrerelease(_dshLatest) ? "プレリリースです。" : "");
             _dshUpdateHost.Visibility = Visibility.Visible;
             return;
         }
@@ -515,6 +527,12 @@ internal sealed class MainWindow : Window
         _dshUpdateHost.ToolTip = null;
         _dshUpdateHost.Visibility = Visibility.Collapsed;
     }
+
+    /// <summary>Dist-tag shown beside a version; `latest` needs no label.</summary>
+    private static string ChannelLabel(string? channel) =>
+        string.IsNullOrEmpty(channel) || channel.Equals("latest", StringComparison.OrdinalIgnoreCase)
+            ? ""
+            : $"（{channel}）";
 
     /// <summary>Confirm, then stop → npm install -g → verify → start the local DSH.</summary>
     private async Task UpdateDshAsync()
@@ -529,10 +547,13 @@ internal sealed class MainWindow : Window
         var machine = _config.LocalMachine;
         var current = _dshVersion ?? "不明";
         var latest = _dshLatest!;
-        var receipt = $"現在 {current} → {latest}\n{DshUpdates.InstallCommandLine(latest)}";
-        var confirmed = ConfirmWindow.Ask(this, $"DSH {latest} に更新しますか",
-            "DSH を停止して npm install -g を実行し、終わったら起動し直します。実行中のセッションは中断され、ページは再接続します。",
-            receipt, "DSH を更新");
+        var receipt = $"現在 {current} → {latest}{ChannelLabel(_dshChannel)}\n{DshUpdates.InstallCommandLine(latest)}";
+        var body = "DSH を停止して npm install -g を実行し、終わったら起動し直します。実行中のセッションは中断され、ページは再接続します。";
+        if (DshUpdates.IsPrerelease(latest))
+        {
+            body += $"\n\n{latest} はプレリリースです（{_dshChannel ?? "latest"} チャネル）。";
+        }
+        var confirmed = ConfirmWindow.Ask(this, $"DSH {latest} に更新しますか", body, receipt, "DSH を更新");
         if (!confirmed) return;
 
         _updatingDsh = true;
@@ -871,7 +892,7 @@ internal sealed class MainWindow : Window
             Margin = new Thickness(7, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Cursor = Cursors.Hand,
-            ToolTip = $"DSH {_dshLatest} が利用可能です（現在 {_dshVersion}）",
+            ToolTip = $"DSH {_dshLatest}{ChannelLabel(_dshChannel)} が利用可能です（現在 {_dshVersion}）",
             Child = UiKit.Text("更新", 9.5, Theme.Attention, FontWeights.Medium),
         };
         badge.MouseLeftButtonUp += (_, e) =>
@@ -958,7 +979,7 @@ internal sealed class MainWindow : Window
             }
             else if (DshUpdateAvailable)
             {
-                versionText = UiKit.Text($"{_dshVersion} → {_dshLatest}", 10.5, Theme.Attention, FontWeights.Medium, Theme.Mono);
+                versionText = UiKit.Text($"{_dshVersion} → {_dshLatest}{ChannelLabel(_dshChannel)}", 10.5, Theme.Attention, FontWeights.Medium, Theme.Mono);
             }
             else if (_dshLatest is null)
             {

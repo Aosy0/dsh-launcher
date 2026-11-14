@@ -613,15 +613,17 @@ internal static class Cli
     {
         var machine = config.LocalMachine;
         var info = DshUpdates.CheckAsync().GetAwaiter().GetResult();
-        if (info.Current is null || info.Latest is null)
+        if (info.Current is null || info.Target is null)
         {
             if (options.Json)
             {
                 Console.WriteLine(JsonSerializer.Serialize(new
                 {
                     current = info.Current,
-                    latest = info.Latest,
+                    target = info.Target,
+                    channel = info.Channel,
                     available = false,
+                    tags = info.Tags,
                     error = info.Error,
                 }, Json.Options));
             }
@@ -629,8 +631,11 @@ internal static class Cli
             return 1;
         }
 
+        var target = info.Target;
+        var channel = info.Channel ?? "latest";
+        var prerelease = DshUpdates.IsPrerelease(target);
         var running = Ports.ListenerPid(machine.Port) is not null;
-        var command = DshUpdates.InstallCommandLine(info.Latest);
+        var command = DshUpdates.InstallCommandLine(target);
         if (!info.IsNewer)
         {
             if (options.Json)
@@ -638,9 +643,11 @@ internal static class Cli
                 Console.WriteLine(JsonSerializer.Serialize(new
                 {
                     current = info.Current,
-                    latest = info.Latest,
+                    target,
+                    channel,
                     available = false,
                     command,
+                    tags = info.Tags,
                 }, Json.Options));
             }
             else
@@ -657,16 +664,20 @@ internal static class Cli
                 Console.WriteLine(JsonSerializer.Serialize(new
                 {
                     current = info.Current,
-                    latest = info.Latest,
+                    target,
+                    channel,
                     available = true,
+                    prerelease,
                     running,
                     command,
                     npm = DshUpdates.NpmPath(),
+                    tags = info.Tags,
                 }, Json.Options));
             }
             else
             {
-                Console.WriteLine($"DSH {info.Latest} が利用可能です（現在 {info.Current}）");
+                var note = prerelease ? "（プレリリース）" : "";
+                Console.WriteLine($"DSH {target} が利用可能です（現在 {info.Current}・{channel} チャネル）{note}");
                 Console.WriteLine(command);
                 if (options.DryRun)
                 {
@@ -678,14 +689,15 @@ internal static class Cli
             return 0;
         }
 
-        var result = DshUpdates.InstallAsync(machine, info.Latest, line => Console.Error.WriteLine("dshl: " + line))
+        var result = DshUpdates.InstallAsync(machine, target, line => Console.Error.WriteLine("dshl: " + line))
             .GetAwaiter().GetResult();
         if (options.Json)
         {
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 current = info.Current,
-                latest = info.Latest,
+                target,
+                channel,
                 command,
                 ok = result.Ok,
                 message = result.Message,

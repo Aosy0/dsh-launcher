@@ -161,11 +161,15 @@ macOS 版も同じ `<Version>` を `mac/build.sh` が読む（個別のバージ
       `http://127.0.0.1:<port>/` の順で決め、ループバック版も併記する。
     - トークンはファイルへ保存しない。UI/CLI の出力が唯一の配布経路（ダイアログにも注意書き）。
 15. **DSH 本体の更新はローカルだけ・版を固定**（`DshUpdate.cs`）:
-    - 最新版は npm レジストリの `latest`（`https://registry.npmjs.org/@deepseek-ai/dsh/latest`）から取る。
-      インストール済みの版は `dsh.cmd` の隣の `node_modules/@deepseek-ai/dsh/package.json` を読む
+    - 最新版は npm レジストリの **dist-tags**（`https://registry.npmjs.org/-/package/@deepseek-ai/dsh/dist-tags`）
+      から取る。すべてのタグ（`latest` / `next` / `alpha` …）を semver で比べ、最も新しい版を候補にする
+      （プレリリースも対象。同値なら `latest` を優先）。`latest` 固定にしないのは、`next` にだけ
+      RC が載ることがあるため。
+    - インストール済みの版は `dsh.cmd` の隣の `node_modules/@deepseek-ai/dsh/package.json` を読む
       （node の起動 ≈1 秒を避けるため）。読めないときだけ `dsh --version` にフォールバックする。
     - 比較はプレリリース順序込みの semver（`0.2.2-rc.1 < 0.2.2-rc.3 < 0.2.2`）。npm の `latest` が
-      RC のこともあるため文字列比較は使わない。
+      RC のこともあるため文字列比較は使わない。候補のチャネル名は UI・確認ダイアログ・CLI に出し、
+      **自動では入れない**（将来のメジャーのプレリリースも semver 上は候補になる）。
     - **ランチャーは止めずに DSH だけ再起動する**。停止完了（ポートが閉じる）を待ってから
       `npm install -g @deepseek-ai/dsh@<ver>`（最大 10 分）。完了後に `package.json` を読み直して版を
       検証し、稼働中だったときだけ起動し直す。失敗時は元の版で起動し直し、理由と npm 出力末尾 6 行を返す。
@@ -219,18 +223,21 @@ macOS 版も同じ `<Version>` を `mac/build.sh` が読む（個別のバージ
 9. 認証 URL の実効性: 返った URL を Cookie の無いブラウザプロファイルで開き、DSH の画面（401 でない）に
    なることを確認する。同じ URL を再び開いても 303 で通る（トークンは使い捨てではない）。
 10. DSH 本体の更新（本番の dsh を変えない）:
-    - `dshl dsh-update --check --json --config <ラボ>` が `current` / `latest` / `available` を返す。
-      更新不要なら終了コード 2、必要なら 0（`--check`）。
-    - Debug ビルドに `DSHL_DSH_LATEST=0.2.2-rc.3` を付けると `available: true` と実行コマンドが出る。
-      比較の確認は `0.2.2-rc.1`（同等）/ `0.2.2-rc.10`（新しい）/ `0.2.1`（古い）/ `0.2.2`（RC より新しい）
-      を切り替えて行う。`--dry-run` は停止・インストール・起動の予定だけを表示する。
+    - `dshl dsh-update --check --json --config <ラボ>` が `current` / `target` / `channel` / `available` /
+      `tags` を返す。更新不要なら終了コード 2、必要なら 0（`--check`）。実レジストリでは
+      `latest=0.2.2-rc.1` / `next=0.2.2-rc.3` のとき target が `0.2.2-rc.3`・channel が `next` になる。
+    - Debug ビルドに `DSHL_DSH_TAGS='latest=0.2.2-rc.1,next=0.2.2-rc.3'` を付けると `available: true` と
+      実行コマンドが出る（`DSHL_DSH_LATEST` は単一 `latest` タグ用に残している）。選択の確認は
+      次の組み合わせで行う: `rc.3`（next が新しい）/ `rc.10`（数値比較）/ `0.2.3-rc.1`（次のマイナーの
+      プレリリース）/ `0.2.1-rc.1`（latest が新しい）/ 同値（latest を優先）/ `alpha` のみ（更新なし）。
+      `--dry-run` は停止・インストール・起動の予定だけを表示する。
     - インストール経路は `DSHL_DSH_NPM=<ダミー.cmd>` に差し替える。ダミーは受け取った引数を stdout に出し、
       任意の終了コードを返す（例: `echo ARGS: %*` → `exit /b 3`）。成功・npm 失敗・版検証ミスの 3 系統を
       本物の npm install なしで確認できる。成功経路では `dsh --version` が変わらないので
       「別の場所の dsh が優先されている可能性」の警告になる（仕様どおり）。
-    - GUI は `dotnet dshl.dll gui --config <ラボ>`（または Debug exe）+ `DSHL_DSH_LATEST` で起動し、
-      ローカル行の「更新」バッジ、詳細の `0.2.2-rc.1 → 0.2.2-rc.3` と「DSH を更新」ボタン、
-      ステータスバーの `DSH <ver> に更新` を UIAutomation（`Name` 検索 / `InvokePattern`）で確認する。
+    - GUI は `dotnet dshl.dll gui --config <ラボ>`（または Debug exe）+ `DSHL_DSH_TAGS` で起動し、
+      ローカル行の「更新」バッジ、詳細の `0.2.2-rc.1 → 0.2.2-rc.3（next）` と「DSH を更新」ボタン、
+      ステータスバーの `DSH 0.2.2-rc.3 に更新` を UIAutomation（`Name` 検索 / `InvokePattern`）で確認する。
       確認ダイアログは `EnumWindows` + `GetWindowText` でハンドルを取り、
       `PrintWindow(hwnd, hdc, 2)` でキャプチャする。**本番 3080 は停止しない**（ラボのポートを使う）。
 ## トラブルシュート

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -14,8 +15,14 @@ internal sealed class DshVersionInfo
     /// <summary>Version of the DSH that the local machine runs; null when it cannot be read.</summary>
     public string? Current { get; init; }
 
-    /// <summary>`latest` dist-tag of @deepseek-ai/dsh on the npm registry; null when the check failed.</summary>
-    public string? Latest { get; init; }
+    /// <summary>Newest published version across the registry's dist-tags; null when the check failed.</summary>
+    public string? Target { get; init; }
+
+    /// <summary>dist-tag carrying <see cref="Target"/> (`latest` / `next` / `alpha` …); null when unknown.</summary>
+    public string? Channel { get; init; }
+
+    /// <summary>All published dist-tags by name; empty when the check failed.</summary>
+    public IReadOnlyDictionary<string, string> Tags { get; init; } = new Dictionary<string, string>();
 
     public bool IsNewer { get; init; }
 
@@ -24,15 +31,15 @@ internal sealed class DshVersionInfo
 
 /// <summary>
 /// DSH itself (the `@deepseek-ai/dsh` npm package), not the launcher exe: the launcher reads the
-/// installed version from the package next to the dsh shim it starts, compares it with the registry's
-/// `latest` dist-tag, and updates by stopping the local DSH, running `npm install -g`, then starting it
-/// again when it was running before. Only the local machine is handled — remote machines keep the
-/// existing `setup --install` flow because their npm prefix differs per host.
+/// installed version from the package next to the dsh shim it starts, compares it with every
+/// published dist-tag (`latest`, `next`, `alpha`, …) and picks the newest one — pre-release channels
+/// included — then updates by stopping the local DSH, running `npm install -g`, and starting it again
+/// when it was running before. Only the local machine is handled — remote machines keep the existing
+/// `setup --install` flow because their npm prefix differs per host.
 /// </summary>
 internal static class DshUpdates
 {
     public const string Package = "@deepseek-ai/dsh";
-    public const string Channel = "latest";
 
     /// <summary>How long an installed version stays cached in memory.</summary>
     private static readonly TimeSpan VersionCache = TimeSpan.FromMinutes(5);
@@ -43,7 +50,7 @@ internal static class DshUpdates
     private static string? _version;
     private static DateTime _checkedAt = DateTime.MinValue;
 
-    public static string RegistryUrl => $"https://registry.npmjs.org/{Package}/{Channel}";
+    public static string DistTagsUrl => $"https://registry.npmjs.org/-/package/{Package}/dist-tags";
 
     /// <summary>Last version read by <see cref="LocalVersion"/>; null until the first read.</summary>
     public static string? CachedVersion
@@ -110,22 +117,36 @@ internal static class DshUpdates
         return null;
     }
 
-    /// <summary>Latest published version (`latest` dist-tag), or null when the registry is unreachable.</summary>
-    public static async Task<string?> LatestAsync()
+    /// <summary>Every published dist-tag (`latest` / `next` / `alpha` …), or null when unreachable.</summary>
+    public static async Task<IReadOnlyDictionary<string, string>?> DistTagsAsync()
     {
 #if DEBUG
-        // Laboratory seam (debug builds only): lets the UI test the badge without waiting for a release.
-        var overridden = Environment.GetEnvironmentVariable("DSHL_DSH_LATEST");
-        if (!string.IsNullOrWhiteSpace(overridden)) return overridden.Trim();
+        // Laboratory seams (debug builds only): tags can be scripted without publishing anything.
+        var scripted = Environment.GetEnvironmentVariable("DSHL_DSH_TAGS");
+        if (!string.IsNullOrWhiteSpace(scripted)) return ParseScriptedTags(scripted);
+        var single = Environment.GetEnvironmentVariable("DSHL_DSH_LATEST");
+        if (!string.IsNullOrWhiteSpace(single))
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["latest"] = single.Trim() };
+        }
 #endif
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, RegistryUrl);
+            using var request = new HttpRequestMessage(HttpMethod.Get, DistTagsUrl);
             request.Headers.TryAddWithoutValidation("Accept", "application/json");
             using var response = await Http.SendAsync(request);
             if (!response.IsSuccessStatusCode) return null;
             using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            return document.RootElement.TryGetProperty("version", out var version) ? version.GetString() : null;
+            var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.String &&
+                    property.Value.GetString() is { Length: > 0 } version)
+                {
+                    tags[property.Name] = version.Trim();
+                }
+            }
+            return tags.Count == 0 ? null : tags;
         }
         catch
         {
@@ -133,18 +154,77 @@ internal static class DshUpdates
         }
     }
 
-    /// <summary>Installed and latest versions together, with the comparison and a readable error.</summary>
+#if DEBUG
+    private static IReadOnlyDictionary<string, string> ParseScriptedTags(string scripted)
+    {
+        var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var part in scripted.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = part.Split('=', 2, StringSplitOptions.TrimEntries);
+            if (pair.Length == 2 && pair[0].Length > 0 && pair[1].Length > 0) tags[pair[0]] = pair[1];
+        }
+        return tags.Count == 0
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["latest"] = scripted.Trim() }
+            : tags;
+    }
+#endif
+
+    /// <summary>
+    /// Newest version across the tags (pre-release channels included) and the tag that carries it.
+    /// Equal versions keep the earliest tag, preferring `latest` so a stable release never loses to a
+    /// channel that merely repeats it.
+    /// </summary>
+    public static (string Version, string Channel)? SelectTarget(IReadOnlyDictionary<string, string> tags)
+    {
+        (string Version, string Channel)? best = null;
+        foreach (var (channel, version) in tags)
+        {
+            if (string.IsNullOrWhiteSpace(version)) continue;
+            if (best is null)
+            {
+                best = (version, channel);
+                continue;
+            }
+            var compared = Compare(version, best.Value.Version);
+            if (compared > 0 || (compared == 0 && PreferChannel(channel, best.Value.Channel)))
+            {
+                best = (version, channel);
+            }
+        }
+        return best;
+    }
+
+    private static bool PreferChannel(string candidate, string current) =>
+        candidate.Equals("latest", StringComparison.OrdinalIgnoreCase) &&
+        !current.Equals("latest", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>True when the version carries a pre-release suffix (`0.2.2-rc.3`).</summary>
+    public static bool IsPrerelease(string? version) =>
+        version is not null && version.Contains('-', StringComparison.Ordinal);
+
+    /// <summary>Installed and newest published versions together, with the comparison and an error.</summary>
     public static async Task<DshVersionInfo> CheckAsync()
     {
         var current = await Task.Run(() => LocalVersion());
-        var latest = await LatestAsync();
-        var newer = current is not null && latest is not null && Compare(latest, current) > 0;
+        var tags = await DistTagsAsync();
+        var target = tags is null ? null : SelectTarget(tags);
+        var newer = current is not null && target is not null && Compare(target.Value.Version, current) > 0;
         var error = current is null
             ? "インストール済みの DSH バージョンを確認できませんでした。"
-            : latest is null
+            : tags is null
                 ? "最新バージョンを確認できませんでした（npm レジストリに接続できません）。"
-                : null;
-        return new DshVersionInfo { Current = current, Latest = latest, IsNewer = newer, Error = error };
+                : target is null
+                    ? "npm レジストリに公開されているバージョンがありません。"
+                    : null;
+        return new DshVersionInfo
+        {
+            Current = current,
+            Target = target?.Version,
+            Channel = target?.Channel,
+            Tags = tags ?? new Dictionary<string, string>(),
+            IsNewer = newer,
+            Error = error,
+        };
     }
 
     /// <summary>The npm executable used for the global install.</summary>
