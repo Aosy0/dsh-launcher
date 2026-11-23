@@ -634,8 +634,8 @@ internal sealed class MainWindow : Window
         var add = UiKit.Quiet("+ マシンを追加", AddMachine);
         grid.Children.Add(add);
         var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        // Both actions belong to this PC's DSH, not to an SSH machine row.
-        right.Children.Add(UiKit.Button("認証 URL", false, IssueLocalAuthUrl, 28, 11.5));
+        // The auth URL follows the selected row; PWA still belongs to this PC.
+        right.Children.Add(UiKit.Button("認証 URL", false, () => _ = IssueAuthUrlAsync(Selected()), 28, 11.5));
         right.Children.Add(new Border { Width = 8 });
         // The PWA belongs to this PC, not to a machine row: keep it a single, always-visible action.
         right.Children.Add(UiKit.Button("PWA を開く", true, OpenPwa, 28, 11.5));
@@ -1232,7 +1232,7 @@ internal sealed class MainWindow : Window
         }
     }
 
-    /// <summary>Bottom bar / tray / local row entry: this PC's DSH only.</summary>
+    /// <summary>Tray (this PC only): the selected row is not part of the tray menu.</summary>
     internal void IssueLocalAuthUrl() => _ = IssueAuthUrlAsync(_config.LocalMachine);
 
     private void AddMachine()
@@ -1330,7 +1330,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(_header);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("PWA を開く", null, (_, _) => OpenPwa());
-        menu.Items.Add("認証 URL を発行…", null, (_, _) => _window.Dispatcher.Invoke(() => _window.IssueLocalAuthUrl()));
+        menu.Items.Add("この PC の認証 URL…", null, (_, _) => _window.Dispatcher.Invoke(() => _window.IssueLocalAuthUrl()));
         menu.Items.Add(new WinForms.ToolStripSeparator());
 
         var pinned = statuses

@@ -44,7 +44,7 @@ macOS 版は SwiftUI + AppKit のメニューバーアプリと CLI（`mac/`）�
   検証クライアントは Cookie を保持しない（保持すると古いトークンでも 303 になる）。トークンは保存しない。
   リモートは SSH 転送（`ssh -N -L 127.0.0.1:<local>:127.0.0.1:<port>`）越しに同じ検証をする。
   URL は `127.0.0.1:<local>` の**この PC 用**で、ランチャー（または `--tunnel` の CLI）の実行中だけ有効。
-  UI はボトムバー「認証 URL」・行メニュー・トレイ、CLI は
+  UI はボトムバー「認証 URL」（選択中のマシン）・行メニュー・トレイ、CLI は
   `dshl auth-url [--tunnel] [--copy] [--open] [--json]`。macOS 版（`AuthURL.swift`）はローカルのみ。
 - **アプリ内更新**: `Update.cs`。`releases/latest` を確認し、実行中の exe と同じ種類のアセットを
   SHA256 検証してから、非表示 PowerShell ヘルパーで exe を差し替えて再起動する（インストーラは呼ばない）。
