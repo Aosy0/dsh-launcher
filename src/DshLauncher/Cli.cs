@@ -72,6 +72,7 @@ internal static class Cli
         public bool Open;
         public bool Copy;
         public bool Check;
+        public bool Tunnel;
         public string? Config;
         public int Lines = 50;
         public List<string> Positionals = new();
@@ -101,6 +102,7 @@ internal static class Cli
                 case "--open": options.Open = true; break;
                 case "--copy": options.Copy = true; break;
                 case "--check": options.Check = true; break;
+                case "--tunnel": options.Tunnel = true; break;
                 case "--config" when i + 1 < args.Length: options.Config = args[++i]; break;
                 case "-n" when i + 1 < args.Length && int.TryParse(args[i + 1], out var lines):
                     options.Lines = lines; i++; break;
@@ -139,10 +141,24 @@ internal static class Cli
                 "pwa" => Pwa(config, options),
                 "auth-url" or "token" => AuthUrl(config, options, target),
                 "update" => Update(options),
+                "dsh-update" or "dshupdate" => DshUpdate(config, options),
                 "gui" => 0,
                 _ => Unknown(command),
             };
-            if (positionals.Count > 0 || options.Config is not null) config.Save(options.Config);
+            // Persisting the config is a side effect of the commands that change it; read-only
+            // commands tolerate an unwritable config (another instance may hold it, or the user
+            // may run the CLI against a read-only profile).
+            if (positionals.Count > 0 || options.Config is not null)
+            {
+                if (IsReadOnlyCommand(command))
+                {
+                    try { config.Save(options.Config); } catch { /* the scan result already printed */ }
+                }
+                else
+                {
+                    config.Save(options.Config);
+                }
+            }
             return code;
         }
         catch (Exception error)
@@ -465,10 +481,17 @@ internal static class Cli
         return result.Ok ? 0 : 1;
     }
 
-    /// <summary>Issues the `?token=` URL that authenticates a new browser (local DSH only).</summary>
+    /// <summary>Issues the `?token=` URL that authenticates a new browser.</summary>
     private static int AuthUrl(LauncherConfig config, Options options, string? target)
     {
         var machine = Resolve(config, target);
+        var remote = machine.Kind != MachineKind.Local;
+        if (remote && !options.Tunnel)
+        {
+            Fail("リモートの認証 URL は --tunnel を付けて発行してください（URL を使う間トンネルを維持します）。");
+            return 1;
+        }
+
         var info = AuthUrls.IssueAsync(machine).GetAwaiter().GetResult();
 
         if (info.Ok)
@@ -490,17 +513,49 @@ internal static class Cli
                 pid = info.Pid,
                 message = info.Message,
             }, Json.Options));
-            return info.Ok ? 0 : 1;
+            if (!info.Ok)
+            {
+                SshTunnels.Dispose(machine.Id);
+                return 1;
+            }
+            return Hold(remote, machine, json: true);
         }
 
         if (!info.Ok)
         {
             Fail(info.Message);
+            SshTunnels.Dispose(machine.Id);
             return 1;
         }
 
         Console.WriteLine(info.Url);
-        return 0;
+        return Hold(remote, machine, json: false);
+    }
+
+    /// <summary>Keeps the SSH forward alive after printing its URL; returning would close it.</summary>
+    private static int Hold(bool remote, Machine machine, bool json)
+    {
+        if (!remote) return 0;
+        if (!json) Console.Error.WriteLine("dshl: SSH トンネルを維持しています。Ctrl+C で終了します。");
+
+        using var stop = new ManualResetEventSlim();
+        ConsoleCancelEventHandler onCancel = (_, e) => { e.Cancel = true; stop.Set(); };
+        Console.CancelKeyPress += onCancel;
+        try
+        {
+            while (!stop.Wait(500))
+            {
+                if (SshTunnels.IsAlive(machine.Id)) continue;
+                Fail("SSH トンネルが切れました。");
+                return 1;
+            }
+            return 0;
+        }
+        finally
+        {
+            Console.CancelKeyPress -= onCancel;
+            SshTunnels.Dispose(machine.Id);
+        }
     }
 
     private static void CopyToClipboard(string? text)
@@ -594,12 +649,119 @@ internal static class Cli
         return result.Ok ? 0 : 1;
     }
 
+    /// <summary>Checks npm for a newer @deepseek-ai/dsh and updates the local install (stop → install → start).</summary>
+    private static int DshUpdate(LauncherConfig config, Options options)
+    {
+        var machine = config.LocalMachine;
+        var info = DshUpdates.CheckAsync().GetAwaiter().GetResult();
+        if (info.Current is null || info.Target is null)
+        {
+            if (options.Json)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    current = info.Current,
+                    target = info.Target,
+                    channel = info.Channel,
+                    available = false,
+                    tags = info.Tags,
+                    error = info.Error,
+                }, Json.Options));
+            }
+            Fail(info.Error ?? "DSH のバージョンを確認できませんでした");
+            return 1;
+        }
+
+        var target = info.Target;
+        var channel = info.Channel ?? "latest";
+        var prerelease = DshUpdates.IsPrerelease(target);
+        var running = Ports.ListenerPid(machine.Port) is not null;
+        var command = DshUpdates.InstallCommandLine(target);
+        if (!info.IsNewer)
+        {
+            if (options.Json)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    current = info.Current,
+                    target,
+                    channel,
+                    available = false,
+                    command,
+                    tags = info.Tags,
+                }, Json.Options));
+            }
+            else
+            {
+                Console.WriteLine($"最新です（DSH {info.Current}）");
+            }
+            return 2;
+        }
+
+        if (options.Check || options.DryRun)
+        {
+            if (options.Json)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(new
+                {
+                    current = info.Current,
+                    target,
+                    channel,
+                    available = true,
+                    prerelease,
+                    running,
+                    command,
+                    npm = DshUpdates.NpmPath(),
+                    tags = info.Tags,
+                }, Json.Options));
+            }
+            else
+            {
+                var note = prerelease ? "（プレリリース）" : "";
+                Console.WriteLine($"DSH {target} が利用可能です（現在 {info.Current}・{channel} チャネル）{note}");
+                Console.WriteLine(command);
+                if (options.DryRun)
+                {
+                    Console.WriteLine(running
+                        ? "実行内容: 停止 → npm install -g → 起動"
+                        : "実行内容: npm install -g（停止中なので起動しません）");
+                }
+            }
+            return 0;
+        }
+
+        var result = DshUpdates.InstallAsync(machine, target, line => Console.Error.WriteLine("dshl: " + line))
+            .GetAwaiter().GetResult();
+        if (options.Json)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                current = info.Current,
+                target,
+                channel,
+                command,
+                ok = result.Ok,
+                message = result.Message,
+            }, Json.Options));
+        }
+        else
+        {
+            Console.WriteLine(result.Ok ? result.Message : $"failed: {result.Message}");
+        }
+        return result.Ok ? 0 : 1;
+    }
+
     private static int Unknown(string command)
     {
         Fail($"unknown command: {command}");
         PrintHelp();
         return 1;
     }
+
+    /// <summary>Commands whose config write is only a cache update (detected platform, filter state).</summary>
+    private static bool IsReadOnlyCommand(string command) => command is
+        "status" or "machines" or "list" or "url" or "logs" or "open" or "pwa" or "auth-url" or "token" or
+        "update" or "dsh-update" or "dshupdate" or "gui";
 
     private static Machine Resolve(LauncherConfig config, string? target)
     {
@@ -638,13 +800,17 @@ usage:
   dshl pwa [--open] [--dry-run] [--json]
                                 this PC's DSH as an installed browser web app (PWA):
                                 info, or --open to launch it (--dry-run prints the command line)
-  dshl auth-url [machine] [--copy] [--open] [--json]
+  dshl auth-url [machine] [--tunnel] [--copy] [--open] [--json]
                                 issue the ?token= URL that authenticates a new browser
-                                (this PC's DSH; the URL is valid while dsh runs)
+                                (this PC's DSH; remote machines need --tunnel, which keeps
+                                the SSH forward open until Ctrl+C)
   dshl gui                      open the launcher window
   dshl update [--check] [--dry-run] [--json]
                                 check GitHub Releases and update this exe in place
                                 (--check: report only; --dry-run: print the plan)
+  dshl dsh-update [--check] [--dry-run] [--json]
+                                check npm for a newer @deepseek-ai/dsh and update the
+                                local DSH (stop → npm install -g → start)
   --config <path>               use a different hosts.json
 
 exit codes: 0 ok / 1 error / 2 no change / 3 unreachable / 4 needs setup (helper / PWA)

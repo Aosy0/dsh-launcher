@@ -31,6 +31,8 @@ internal static class Theme
     public static readonly SolidColorBrush Line2 = Brush(0xed, 0xed, 0xed, 0x24);
     public static readonly SolidColorBrush Positive = Brush(0x4c, 0xc3, 0x8a);
     public static readonly SolidColorBrush Attention = Brush(0xd9, 0xa4, 0x41);
+    public static readonly SolidColorBrush AttentionSoft = Brush(0xd9, 0xa4, 0x41, 0x22);
+    public static readonly SolidColorBrush AttentionLine = Brush(0xd9, 0xa4, 0x41, 0x55);
     public static readonly SolidColorBrush Off = Brush(0x5a, 0x5a, 0x60);
     public static readonly SolidColorBrush Danger = Brush(0xc9, 0xa8, 0xa8);
     public static readonly SolidColorBrush Ink = Brush(0x14, 0x14, 0x15);
@@ -221,6 +223,12 @@ internal sealed class DshApplication : Application
         _window.Show();
         _window.BeginRefresh();
     }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        SshTunnels.DisposeAll();
+        base.OnExit(e);
+    }
 }
 
 internal sealed class MainWindow : Window
@@ -240,12 +248,20 @@ internal sealed class MainWindow : Window
     private DateTime _lastRemoteRefresh = DateTime.MinValue;
     private DateTime _lastRefresh = DateTime.MinValue;
     private DateTime _lastUpdateCheck = DateTime.MinValue;
+    private DateTime _lastDshCheck = DateTime.MinValue;
     private bool _refreshing;
     private bool _checkingUpdate;
     private bool _updating;
+    private bool _checkingDsh;
+    private bool _updatingDsh;
     private UpdateInfo? _update;
+    private string? _dshVersion;
+    private string? _dshLatest;
+    private string? _dshChannel;
     private readonly TextBlock _updateText = UiKit.Text("", 10.5, Theme.Positive, family: Theme.Mono);
     private readonly Border _updateHost;
+    private readonly TextBlock _dshUpdateText = UiKit.Text("", 10.5, Theme.Attention, family: Theme.Mono);
+    private readonly Border _dshUpdateHost;
 
     public event Action? Refreshed;
     public event Action<UpdateInfo>? UpdateFound;
@@ -253,6 +269,12 @@ internal sealed class MainWindow : Window
     public LauncherConfig Config => _config;
 
     public UpdateInfo? AvailableUpdate => _update;
+
+    /// <summary>Newer DSH version on the registry, or null when the local DSH is current/unknown.</summary>
+    public string? AvailableDshUpdate => DshUpdateAvailable ? _dshLatest : null;
+
+    private bool DshUpdateAvailable =>
+        _dshVersion is not null && _dshLatest is not null && DshUpdates.Compare(_dshLatest, _dshVersion) > 0;
 
     public MainWindow(LauncherConfig config, string? configPath)
     {
@@ -279,6 +301,17 @@ internal sealed class MainWindow : Window
         _updateHost.MouseLeftButtonUp += (_, _) => { if (_update is not null && !_updating) _ = InstallUpdateAsync(_update); };
         _updateHost.MouseEnter += (_, _) => _updateText.Foreground = Theme.Text;
         _updateHost.MouseLeave += (_, _) => _updateText.Foreground = Theme.Positive;
+
+        _dshUpdateHost = new Border
+        {
+            Child = _dshUpdateText,
+            Cursor = Cursors.Hand,
+            Padding = new Thickness(6, 0, 10, 0),
+            Visibility = Visibility.Collapsed,
+        };
+        _dshUpdateHost.MouseLeftButtonUp += (_, _) => { if (!_updatingDsh) _ = UpdateDshAsync(); };
+        _dshUpdateHost.MouseEnter += (_, _) => _dshUpdateText.Foreground = Theme.Text;
+        _dshUpdateHost.MouseLeave += (_, _) => _dshUpdateText.Foreground = Theme.Attention;
 
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -326,6 +359,10 @@ internal sealed class MainWindow : Window
             {
                 _ = CheckForUpdatesAsync(manual: false, notify: true);
             }
+            if (!_checkingDsh && !_updatingDsh && (DateTime.UtcNow - _lastDshCheck).TotalHours >= 6)
+            {
+                _ = CheckDshVersionAsync(manual: false);
+            }
             if ((DateTime.UtcNow - _lastRefresh).TotalSeconds < 4) return;
             await RefreshAsync();
         };
@@ -336,6 +373,9 @@ internal sealed class MainWindow : Window
         // Check for updates a few seconds after startup so the window comes up instantly.
         _ = Task.Delay(TimeSpan.FromSeconds(6)).ContinueWith(_ =>
             Dispatcher.Invoke(() => _ = CheckForUpdatesAsync(manual: false, notify: true)));
+
+        // DSH itself: show the installed version and badge a newer one as soon as the window is up.
+        _ = CheckDshVersionAsync(manual: false);
     }
 
     // ---------------------------------------------------------------- updates
@@ -432,6 +472,129 @@ internal sealed class MainWindow : Window
         Application.Current.Shutdown();
     }
 
+    // ------------------------------------------------------------ DSH updates
+
+    internal void RequestDshUpdateCheck() => _ = CheckDshVersionAsync(manual: true);
+
+    /// <summary>Called from the tray menu: confirm and update the local DSH.</summary>
+    internal void InstallAvailableDshUpdate()
+    {
+        if (_dshLatest is not null && !_updatingDsh) _ = UpdateDshAsync();
+    }
+
+    /// <summary>Reads the installed and latest DSH versions; their comparison drives the badge and links.</summary>
+    private async Task CheckDshVersionAsync(bool manual)
+    {
+        if (_checkingDsh || _updatingDsh) return;
+        _checkingDsh = true;
+        _lastDshCheck = DateTime.UtcNow;
+        try
+        {
+            var info = await DshUpdates.CheckAsync();
+            // A transient failure (offline registry, unreadable install) keeps the last known values,
+            // so the badge does not flicker and the detail keeps showing the installed version.
+            if (info.Current is not null) _dshVersion = info.Current;
+            if (info.Target is not null)
+            {
+                _dshLatest = info.Target;
+                _dshChannel = info.Channel;
+            }
+            UpdateDshUpdateUi();
+            if (_busy.Count == 0) RebuildList();
+            if (!manual) return;
+            if (info.Error is not null) ConfirmWindow.Info(this, "DSH の更新", info.Error);
+            else if (info.IsNewer)
+            {
+                var prerelease = DshUpdates.IsPrerelease(info.Target) ? "プレリリースです。" : "";
+                ConfirmWindow.Info(this, "DSH の更新",
+                    $"DSH {info.Target}{ChannelLabel(info.Channel)} が利用可能です（現在 {info.Current}）。{prerelease}");
+            }
+            else ConfirmWindow.Info(this, "DSH の更新", $"最新です（DSH {info.Current}）。");
+        }
+        finally
+        {
+            _checkingDsh = false;
+        }
+    }
+
+    private void UpdateDshUpdateUi()
+    {
+        if (DshUpdateAvailable)
+        {
+            _dshUpdateText.Text = $"DSH {_dshLatest} に更新";
+            _dshUpdateText.Foreground = Theme.Attention;
+            _dshUpdateHost.ToolTip = $"現在 {_dshVersion}。" +
+                                     $"{_dshLatest}{ChannelLabel(_dshChannel)} に更新します。" +
+                                     (DshUpdates.IsPrerelease(_dshLatest) ? "プレリリースです。" : "");
+            _dshUpdateHost.Visibility = Visibility.Visible;
+            return;
+        }
+        _dshUpdateText.Text = "";
+        _dshUpdateHost.ToolTip = null;
+        _dshUpdateHost.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Dist-tag shown beside a version; `latest` needs no label.</summary>
+    private static string ChannelLabel(string? channel) =>
+        string.IsNullOrEmpty(channel) || channel.Equals("latest", StringComparison.OrdinalIgnoreCase)
+            ? ""
+            : $"（{channel}）";
+
+    /// <summary>Confirm, then stop → npm install -g → verify → start the local DSH.</summary>
+    private async Task UpdateDshAsync()
+    {
+        if (_updatingDsh) return;
+        if (!DshUpdateAvailable)
+        {
+            await CheckDshVersionAsync(manual: true);
+            return;
+        }
+
+        var machine = _config.LocalMachine;
+        var current = _dshVersion ?? "不明";
+        var latest = _dshLatest!;
+        var receipt = $"現在 {current} → {latest}{ChannelLabel(_dshChannel)}\n{DshUpdates.InstallCommandLine(latest)}";
+        var body = "DSH を停止して npm install -g を実行し、終わったら起動し直します。実行中のセッションは中断され、ページは再接続します。";
+        if (DshUpdates.IsPrerelease(latest))
+        {
+            body += $"\n\n{latest} はプレリリースです（{_dshChannel ?? "latest"} チャネル）。";
+        }
+        var confirmed = ConfirmWindow.Ask(this, $"DSH {latest} に更新しますか", body, receipt, "DSH を更新");
+        if (!confirmed) return;
+
+        _updatingDsh = true;
+        _dshUpdateHost.Visibility = Visibility.Collapsed;
+        _statusProgress.Visibility = Visibility.Visible;
+        _busy[machine.Id] = ("DSH 更新", DateTime.UtcNow);
+        RebuildList();
+
+        string message;
+        try
+        {
+            var result = await DshUpdates.InstallAsync(machine, latest);
+            message = result.Message;
+            var installed = DshUpdates.CachedVersion;
+            if (installed is not null) _dshVersion = installed;
+            _lastDshCheck = DateTime.UtcNow;
+            // A successful install clears the offer; a failed verification keeps it for a retry.
+            if (DshUpdates.VersionEquals(_dshVersion, latest)) _dshLatest = _dshVersion;
+        }
+        catch (Exception error)
+        {
+            message = error.Message;
+        }
+        finally
+        {
+            _busy.Remove(machine.Id);
+            _updatingDsh = false;
+            _statusProgress.Visibility = Visibility.Collapsed;
+        }
+
+        await RefreshAsync();
+        UpdateDshUpdateUi();
+        ConfirmWindow.Info(this, "DSH の更新", message);
+    }
+
     private Border BuildFilterRow()
     {
         _filter.FontSize = 11.5;
@@ -471,8 +634,8 @@ internal sealed class MainWindow : Window
         var add = UiKit.Quiet("+ マシンを追加", AddMachine);
         grid.Children.Add(add);
         var right = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        // Both actions belong to this PC's DSH, not to an SSH machine row.
-        right.Children.Add(UiKit.Button("認証 URL", false, IssueLocalAuthUrl, 28, 11.5));
+        // The auth URL follows the selected row; PWA still belongs to this PC.
+        right.Children.Add(UiKit.Button("認証 URL", false, () => _ = IssueAuthUrlAsync(Selected()), 28, 11.5));
         right.Children.Add(new Border { Width = 8 });
         // The PWA belongs to this PC, not to a machine row: keep it a single, always-visible action.
         right.Children.Add(UiKit.Button("PWA を開く", true, OpenPwa, 28, 11.5));
@@ -498,17 +661,20 @@ internal sealed class MainWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.Children.Add(_summary);
-        Grid.SetColumn(_updateHost, 1);
+        Grid.SetColumn(_dshUpdateHost, 1);
+        grid.Children.Add(_dshUpdateHost);
+        Grid.SetColumn(_updateHost, 2);
         grid.Children.Add(_updateHost);
         _statusProgress.Visibility = Visibility.Collapsed;
         _statusProgress.Margin = new Thickness(8, 0, 8, 0);
         var progressHost = new Grid { VerticalAlignment = VerticalAlignment.Center };
         progressHost.Children.Add(_statusProgress);
-        Grid.SetColumn(progressHost, 2);
+        Grid.SetColumn(progressHost, 3);
         grid.Children.Add(progressHost);
         var version = UiKit.Text(AppInfo.Version, 10.5, Theme.Muted, family: Theme.Mono);
-        Grid.SetColumn(version, 3);
+        Grid.SetColumn(version, 4);
         grid.Children.Add(version);
         return new Border
         {
@@ -559,7 +725,8 @@ internal sealed class MainWindow : Window
                 }
             }
             if (refreshRemotes) _lastRemoteRefresh = DateTime.UtcNow;
-            _config.Save(_configPath);
+            // A read-only config directory must not stop refreshes (the running instance owns the file).
+            try { _config.Save(_configPath); } catch { /* best-effort cache write */ }
             _lastRefresh = DateTime.UtcNow;
             RebuildList();
             Refreshed?.Invoke();
@@ -643,9 +810,20 @@ internal sealed class MainWindow : Window
         lamp.Margin = new Thickness(0, 0, 8, 0);
         grid.Children.Add(lamp);
 
+        var nameCell = new Grid();
+        nameCell.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        nameCell.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var name = UiKit.Text(machine.DisplayName, 12.5, selected ? Theme.Text : Theme.Secondary);
-        Grid.SetColumn(name, 1);
-        grid.Children.Add(name);
+        Grid.SetColumn(name, 0);
+        nameCell.Children.Add(name);
+        if (machine.Kind == MachineKind.Local && DshUpdateAvailable)
+        {
+            var badge = BuildDshBadge();
+            Grid.SetColumn(badge, 1);
+            nameCell.Children.Add(badge);
+        }
+        Grid.SetColumn(nameCell, 1);
+        grid.Children.Add(nameCell);
 
         var busy = _busy.TryGetValue(machine.Id, out var operation);
         var stateText = busy
@@ -707,6 +885,30 @@ internal sealed class MainWindow : Window
         return border;
     }
 
+    /// <summary>Mark beside the local machine's name: a newer DSH is published on the registry.</summary>
+    private Border BuildDshBadge()
+    {
+        var badge = new Border
+        {
+            Background = Theme.AttentionSoft,
+            BorderBrush = Theme.AttentionLine,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(5, 0, 5, 1),
+            Margin = new Thickness(7, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = Cursors.Hand,
+            ToolTip = $"DSH {_dshLatest}{ChannelLabel(_dshChannel)} が利用可能です（現在 {_dshVersion}）",
+            Child = UiKit.Text("更新", 9.5, Theme.Attention, FontWeights.Medium),
+        };
+        badge.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            _ = UpdateDshAsync();
+        };
+        return badge;
+    }
+
     private ContextMenu BuildRowMenu(Machine machine)
     {
         var menu = new ContextMenu
@@ -723,7 +925,7 @@ internal sealed class MainWindow : Window
         }
         Item("名前を変更…", () => Rename(machine));
         Item("ブラウザで開く", () => OpenUrl(machine));
-        if (machine.Kind == MachineKind.Local) Item("認証 URL を発行…", IssueLocalAuthUrl);
+        Item("認証 URL を発行…", () => _ = IssueAuthUrlAsync(machine));
         menu.Items.Add(new Separator());
         Item("起動", () => Act(machine, "start", false));
         Item("再起動", () => Act(machine, "restart", true));
@@ -764,6 +966,52 @@ internal sealed class MainWindow : Window
         var factsText = UiKit.Text(string.Join(" · ", facts), 10.5, Theme.Muted, family: Theme.Mono);
         factsText.Margin = new Thickness(0, 6, 0, 0);
         stack.Children.Add(factsText);
+
+        // DSH itself: installed version, the newer one when published, and one action for both.
+        if (machine.Kind == MachineKind.Local)
+        {
+            var dshRow = new Grid { Margin = new Thickness(0, 7, 0, 0) };
+            dshRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            dshRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            dshRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var dshLabel = UiKit.Text("DSH", 10.5, Theme.Muted);
+            dshLabel.Margin = new Thickness(0, 0, 8, 0);
+            dshRow.Children.Add(dshLabel);
+
+            TextBlock versionText;
+            if (_dshVersion is null)
+            {
+                versionText = UiKit.Text("バージョンを確認できません", 10.5, Theme.Muted);
+            }
+            else if (DshUpdateAvailable)
+            {
+                versionText = UiKit.Text($"{_dshVersion} → {_dshLatest}{ChannelLabel(_dshChannel)}", 10.5, Theme.Attention, FontWeights.Medium, Theme.Mono);
+            }
+            else if (_dshLatest is null)
+            {
+                versionText = UiKit.Text($"{_dshVersion}（最新を確認できません）", 10.5, Theme.Muted, family: Theme.Mono);
+            }
+            else
+            {
+                versionText = UiKit.Text($"{_dshVersion}（最新）", 10.5, Theme.Secondary, family: Theme.Mono);
+            }
+            Grid.SetColumn(versionText, 1);
+            dshRow.Children.Add(versionText);
+
+            if (DshUpdateAvailable)
+            {
+                var update = UiKit.Button("DSH を更新", true, () => _ = UpdateDshAsync(), 26, 11);
+                Grid.SetColumn(update, 2);
+                dshRow.Children.Add(update);
+            }
+            else
+            {
+                var check = UiKit.Quiet("更新を確認", () => _ = CheckDshVersionAsync(manual: true), 10.5);
+                Grid.SetColumn(check, 2);
+                dshRow.Children.Add(check);
+            }
+            stack.Children.Add(dshRow);
+        }
 
         var receiptGrid = new Grid { Margin = new Thickness(0, 7, 0, 0) };
         receiptGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -955,7 +1203,7 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>Issues the `?token=` URL that authenticates a new browser against a running DSH.</summary>
-    private async Task IssueAuthUrlAsync(Machine machine)
+    internal async Task IssueAuthUrlAsync(Machine machine)
     {
         if (_authOpening) return;
         _authOpening = true;
@@ -984,7 +1232,7 @@ internal sealed class MainWindow : Window
         }
     }
 
-    /// <summary>Bottom bar / tray / local row entry: this PC's DSH only.</summary>
+    /// <summary>Tray (this PC only): the selected row is not part of the tray menu.</summary>
     internal void IssueLocalAuthUrl() => _ = IssueAuthUrlAsync(_config.LocalMachine);
 
     private void AddMachine()
@@ -1082,7 +1330,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(_header);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("PWA を開く", null, (_, _) => OpenPwa());
-        menu.Items.Add("認証 URL を発行…", null, (_, _) => _window.Dispatcher.Invoke(() => _window.IssueLocalAuthUrl()));
+        menu.Items.Add("この PC の認証 URL…", null, (_, _) => _window.Dispatcher.Invoke(() => _window.IssueLocalAuthUrl()));
         menu.Items.Add(new WinForms.ToolStripSeparator());
 
         var pinned = statuses
@@ -1098,6 +1346,8 @@ internal sealed class TrayIcon : IDisposable
                     : status.State is MachineState.NeedsSetup or MachineState.Unreachable ? Drawing.Color.FromArgb(0xd9, 0xa4, 0x41)
                     : Drawing.Color.FromArgb(0xa1, 0xa1, 0xa6),
             };
+            item.DropDownItems.Add("認証 URL を発行…", null, (_, _) =>
+                _window.Dispatcher.Invoke(() => { _ = _window.IssueAuthUrlAsync(machine); }));
             item.DropDownItems.Add("ブラウザで開く", null, (_, _) => OpenUrl(machine));
             item.DropDownItems.Add("再起動", null, (_, _) => Run(machine, "restart"));
             item.DropDownItems.Add("停止", null, (_, _) => Run(machine, "stop"));
@@ -1122,6 +1372,14 @@ internal sealed class TrayIcon : IDisposable
         }
         menu.Items.Add("更新を確認…", null, (_, _) =>
             _window.Dispatcher.Invoke(() => _window.RequestUpdateCheck()));
+        var dshUpdate = _window.AvailableDshUpdate;
+        if (dshUpdate is not null)
+        {
+            menu.Items.Add($"DSH {dshUpdate} に更新…", null, (_, _) =>
+                _window.Dispatcher.Invoke(() => _window.InstallAvailableDshUpdate()));
+        }
+        menu.Items.Add("DSH の更新を確認…", null, (_, _) =>
+            _window.Dispatcher.Invoke(() => _window.RequestDshUpdateCheck()));
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("終了", null, (_, _) => { _icon.Visible = false; Application.Current.Shutdown(); });
     }

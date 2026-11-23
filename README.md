@@ -2,7 +2,7 @@
 
 DeepSeek Harness（`dsh`）を、この PC とリモートマシンで起動・再起動・停止・状態確認するための
 デスクトップアプリ＋ CLI（`dshl`）。Windows 版は WPF / .NET 9、macOS 版は SwiftUI / AppKit で、
-**同じバージョン（v0.1.16）と同じ CLI 語彙**を提供します。プラットフォームごとの違いはこの
+**同じバージョン（v0.1.19）と同じ CLI 語彙**を提供します。プラットフォームごとの違いはこの
 README 内に併記しています。
 
 > 非公式のサードパーティ製ランチャーです。DeepSeek 公式の製品ではなく、DeepSeek による承認・提携・サポートはありません。
@@ -30,7 +30,7 @@ README 内に併記しています。
 | リモート操作 | SSH＋`agent.sh` / `agent.ps1` | 同左（`agent.sh` は macOS の `nohup` / `lsof` 対応） |
 | PWA 検出 | 各ブラウザの `Web Applications\_crx_<id>` | `~/Applications/*.localized/*.app` の Info.plist |
 | PWA 初回認証 | 署名クッキーを自動生成して設定 | 未対応（認証 URL で対応） |
-| 認証 URL | 起動ログの `?token=` を検証して発行 | 同左（起動直後は最大 10 秒待つ） |
+| 認証 URL | 起動ログの `?token=` を検証して発行（リモートは SSH トンネル） | 同左（起動直後は最大 10 秒待つ。ローカルのみ） |
 | アプリ内更新 | あり（GitHub Releases） | なし（ビルドし直し） |
 | 配布 | 自己完結 exe / `install.ps1` | `.app` zip / `install.sh`（ad-hoc 署名） |
 | CLI | `dshl.exe`（GUI と同一） | `dshl`（`.app` 内バイナリのラッパー） |
@@ -47,6 +47,9 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 
 - `%LOCALAPPDATA%\Programs\DshLauncher\dshl.exe` に配置し、スタートメニューに「DSH Launcher」を追加する
 - 配布物の SHA256 を `SHA256SUMS.txt` と照合してから配置する
+- **インストール版から起動する**。リポジトリ内の `dist\dshl.exe` から起動すると、DSH のワークスペースが
+  Windows サンドボックスで保護されている環境では Low 整合性で動作し、DSH の起動／停止／更新が
+  失敗することがある（インストール版はワークスペース外なので通常の権限で動く）
 - 更新: 同じコマンドを再実行、または `& "$env:LOCALAPPDATA\Programs\DshLauncher\update.cmd"`
 - アンインストール（設定・ログも消すなら `-Purge`）:
   ```powershell
@@ -60,6 +63,8 @@ irm https://github.com/Aosy0/dsh-launcher/releases/latest/download/install.ps1 |
 - .NET 9 Desktop Runtime が入っている場合は軽量版 `dshl-<version>-win-x64-framework-dependent.exe`（約 0.5MB）も使える。
 - 未署名の exe のため、初回は SmartScreen の「Windows によって PC が保護されました」が出ることがある。
   「詳細情報」→「実行」で進む。
+- **ビルドし直して `dist\dshl.exe` を差し替えたときも同じ確認が出る**（署名していないため、ファイルの
+  ハッシュが変わると評価がリセットされる）。Defender の検出ではない。
 
 ### macOS
 
@@ -141,6 +146,21 @@ cd mac
 `~/.dsh/runtime/node` から Node 24.9+ と dsh を解決して PATH を明示する。ログ
 （`?token=` を含む）は 0600、アプリのデータフォルダは 0700。
 
+### DSH 本体の更新（Windows）
+
+ランチャー自身の更新（アプリ内更新）とは別に、起動対象の `@deepseek-ai/dsh` も GUI から更新できる。
+
+- 起動直後と 6 時間ごとに npm の **dist-tags**（`latest` / `next` / `alpha` など）から最も新しい版を
+  確認し（**プレリリースも対象**）、インストール済みより新しければローカル行に「更新」バッジ、
+  ステータスバーに `DSH <version> に更新` を出す。
+- どのチャネルの版かは `0.2.2-rc.3（next）` のように併記する（`latest` は省略）。プレリリースなら
+  確認ダイアログにもその旨を出す。
+- 選択したローカル行の詳細に `0.2.2-rc.1 → 0.2.2-rc.3（next）` と「DSH を更新」ボタン。トレイからも実行できる。
+- 更新は **停止 → `npm install -g @deepseek-ai/dsh@<version>`（版を固定）→ 検証 → 起動**。
+  稼働していなかった場合は起動しない。失敗したら元の版で起動し直し、理由を表示する。
+  ログは `%APPDATA%\DshLauncher\logs\dsh-update.log`。
+- 対象は**この PC（ローカル）のみ**。リモートは「DSH をセットアップ…」で導入する（macOS 版は未対応）。
+
 ### リモート
 
 `~/.ssh/config` の Host エイリアスをそのまま使う。認証は鍵 / ssh-agent のみで、パスワードは保存しない
@@ -159,10 +179,14 @@ dsh web は起動時に一度だけ `dsh web: <url>?token=...` を出力する�
 から候補を拾い、**稼働中のサーバーが 3xx + `Set-Cookie: dsh-auth-…` を返すものだけ**を採用する。
 古いトークンは 401 で捨てる（検証クライアントは Cookie を保持せず、リダイレクトも追わない）。
 
-- 対象は**ランチャー経由で起動したローカル DSH** のみ。リモートは未対応。
+- **ローカル**はランチャー経由で起動した DSH のログを読む。**リモート**は SSH で同じログを読み、
+  `ssh -N -L 127.0.0.1:<13080…>:127.0.0.1:<port>` の転送越しに同じ検証をする
+  （リモート側の設定変更は要らない）。GUI は発行時に転送を作り、CLI は `--tunnel` を付けると
+  URL を出したまま Ctrl+C まで転送を維持する。
+- リモートの URL は**この PC のブラウザ専用**で、ランチャー（または `--tunnel` の CLI）の実行中だけ有効。
 - トークンは認証情報そのもの。ランチャーはファイルに保存せず、画面・クリップボード・CLI の
   stdout / JSON に出すだけ。dsh を再起動すると URL は変わる。
-- Windows は 2.5 秒、macOS は 10 秒の猶予で起動直後のログ行を待つ。
+- 起動直後のログ行を Windows は 2.5 秒、macOS は 10 秒待つ。**macOS 版はローカルのみ**（リモート転送は未対応）。
 
 ### PWA（Web アプリ）を開く
 
@@ -191,11 +215,12 @@ dsh web は起動時に一度だけ `dsh web: <url>?token=...` を出力する�
 | 起動スクリプト | `%APPDATA%\DshLauncher\run\<id>.cmd` / `.vbs` | `~/Library/Application Support/DshLauncher/run/<id>.sh` |
 | スケジューラ | タスク `DshLauncher\start-<id>` | LaunchAgent `io.github.aosy0.dshlauncher.start-<id>.plist` |
 | PWA 認証の記憶 | `%APPDATA%\DshLauncher\pwa-auth.json` | なし |
+| DSH 更新ログ | `%APPDATA%\DshLauncher\logs\dsh-update.log` | なし |
 | リモートヘルパー | `~/.dsh/dshl/agent.ps1` | `~/.dsh/dshl/agent.sh` |
 
 ### バージョン
 
-`src/DshLauncher/DshLauncher.csproj` の `<Version>` が**唯一の情報源**です（現在 `0.1.16`）。
+`src/DshLauncher/DshLauncher.csproj` の `<Version>` が**唯一の情報源**です（現在 `0.1.18`）。
 
 - Windows: UI 右下と `dshl --version` がアセンブリのバージョンを表示する。
 - macOS: `mac/build.sh` が csproj の `<Version>` を読み、`CFBundleShortVersionString` /
@@ -217,18 +242,21 @@ dshl add <name> <ssh-alias> [linux|windows|macos]
 dshl remove <machine>
 dshl open [machine] [--dry-run]
 dshl pwa [--open] [--dry-run] [--json]
-dshl auth-url [machine] [--copy] [--open] [--json]
+dshl auth-url [machine] [--tunnel] [--copy] [--open] [--json]
+dshl dsh-update [--check] [--dry-run] [--json]
 dshl gui
 dshl --version
 ```
 
 - Windows のみ: `dshl update [--check] [--dry-run] [--json]`（アプリ内更新）。
+- Windows のみ: `dshl dsh-update [--check] [--dry-run] [--json]`（DSH 本体の更新。`--check` は確認だけ、
+  `--dry-run` は実行内容の表示）。更新の必要がなければ終了コード `2`。
 - macOS の開発用: `dshl snapshot <out.png>`（一覧をオフスクリーン描画。SSH から `screencapture` が
   使えない環境の確認用。ユーザー向け機能ではない）。
 - `--config <path>` で別の `hosts.json` を使える（ラボ検証用）。
 - 終了コード: `0` 成功 / `1` エラー / `2` 変更なし / `3` 到達不可 / `4` 要セットアップ。
 
-## 実装状況（v0.1.16 / 2026-11-13）
+## 実装状況（v0.1.19 / 2026-11-23）
 
 | 機能 | Windows | macOS |
 |---|---|---|
@@ -245,8 +273,9 @@ dshl --version
 | ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 | ✅ 実装 |
 | マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 | ✅ 実装 |
 | PWA を開く（Web アプリ検出・起動） | ✅ 実機確認（初回認証も自動） | ✅ 検出・起動（初回認証の自動化は未対応） |
-| 新しいブラウザの認証 URL（`?token=` 付き）の発行 | ✅ 実機確認 | ✅ 実機確認 |
+| 新しいブラウザの認証 URL（`?token=` 付き）の発行 | ✅ 実機確認（リモートは SSH トンネル） | ✅ 実機確認（ローカルのみ） |
 | アプリ内更新（通知 → ダウンロード → 置き換え → 再起動） | ✅ 実装・実機確認 | — |
+| DSH 本体の更新（npm の dist-tags から最新を確認 → 停止 → インストール → 起動） | ✅ 実装（ラボで GUI/CLI 確認） | — |
 | 配布（Release / インストーラ / アイコン） | ✅ v0.1.10 から | ✅ .app / zip / `install.sh` |
 | URL の編集 UI / フィルタ表示（9台以上） | ⏳ 次段 | ⏳ 次段 |
 
@@ -283,7 +312,9 @@ dsh-launcher/
 │  ├─ BrowserApp.cs       # PWA の検出と起動（app id 算出・プロファイル走査）
 │  ├─ PwaAuth.cs          # PWA の初回認証（署名クッキー発行・ブラウザ設定）
 │  ├─ AuthUrl.cs          # 新しいブラウザの認証 URL
+│  ├─ Tunnel.cs           # リモート認証 URL 用の SSH 転送
 │  ├─ Update.cs           # アプリ内更新
+│  ├─ DshUpdate.cs        # DSH 本体の更新（npm latest の確認・停止/インストール/起動）
 │  ├─ Cli.cs              # dshl サブコマンド
 │  ├─ Ui.cs / Dialogs.cs  # 一覧・トレイ・確認ダイアログ
 │  └─ app.ico
@@ -316,6 +347,42 @@ macOS 版は v0.1.16 が初版です。以下はプラットフォームごと�
 - **未対応**: アプリ内更新、PWA 初回認証の自動化、リモートの認証 URL、公証（ad-hoc 署名のみ）。
 
 ### Windows 版
+
+#### v0.1.19
+
+- **マシンごとに認証 URL を発行できるようにした。** 行メニュー・トレイのマシン別サブメニューから、
+  選択中のマシンの DSH に新しいブラウザを認証する `?token=` URL を出せる。ボトムバーの「認証 URL」も
+  選択行に追従する（従来は常にこの PC）。トレイ最上位は「この PC の認証 URL…」。
+- リモートは **SSH 転送**（`ssh -N -L 127.0.0.1:<13080…>:127.0.0.1:<port>`）越しに起動ログの
+  token を検証する。リモート側の設定変更は不要。URL はこの PC のブラウザ専用で、ランチャー
+  （または `dshl auth-url <machine> --tunnel`）の実行中だけ有効。
+- リモート Windows のログ `dsh-<port>.log` を読むように修正（従来は `dsh.log` を見ていた）。
+- 検証: minipc（Linux）で URL 発行 → 303 + `Set-Cookie: dsh-auth-…`、token 無しは 401、
+  転送を止めると CLI が exit 1。cps（Windows）でログ読みと古い token の 401 判定を確認。
+  GUI は Debug ビルドで、選択行の名前と「SSH トンネル」表示、URL の 303 を確認。
+
+#### v0.1.18
+
+- **DSH 本体の更新でプレリリースも検知するようにした。** npm の dist-tags（`latest` / `next` / `alpha` …）を
+  すべて取得し、semver で最も新しい版を候補にする（同値なら `latest` を優先）。
+  - 例: `latest` が `0.2.2-rc.1`、`next` が `0.2.2-rc.3` なら、`0.2.2-rc.3（next）` をバッジ／詳細／
+    ステータスバーに出す。確認ダイアログには「プレリリースです（next チャネル）」を表示する。
+  - `dshl dsh-update --check --json` は `target`（候補）・`channel`（dist-tag）・`tags`（全タグ）・
+    `prerelease` を返す。`latest` 固定ではなくなった。
+  - Debug ビルドの試験用シームに `DSHL_DSH_TAGS`（`latest=…,next=…`）を追加。
+
+#### v0.1.17
+
+- **DSH 本体を GUI から更新できるようにした。** npm の `latest` とインストール済みの版を比べ、
+  新しければローカル行に「更新」バッジ、ステータスバーに `DSH <ver> に更新` を表示する。
+  - 選択中のローカル行の詳細に `0.2.2-rc.1 → 0.2.2-rc.3` と「DSH を更新」ボタン。確認ダイアログに
+    実行する `npm install -g @deepseek-ai/dsh@<ver>` を出す。
+  - 更新は停止 → `npm install -g`（版を固定）→ 版の検証 → 起動。稼働していなければ起動しない。
+    失敗時は元の版で起動し直し、npm 出力の末尾を添える。出力は `logs\dsh-update.log` に残す。
+  - トレイに「DSH <ver> に更新…」「DSH の更新を確認…」、CLI に `dshl dsh-update [--check] [--dry-run] [--json]`。
+  - 対象はローカルのみ（リモートは `setup --install`、macOS 版は未対応）。
+- 読み取り専用の CLI コマンド（`status` / `dsh-update --check` など）は、設定ディレクトリに書き込めなくても
+  失敗扱いにしないようにした（終了コードはコマンドの結果のまま）。
 
 #### v0.1.16
 

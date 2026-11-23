@@ -37,15 +37,29 @@ macOS 版は SwiftUI + AppKit のメニューバーアプリと CLI（`mac/`）�
 - **PWA の初回認証**: 401 を検知したら `PwaAuth.cs` が `$DSH_HOME/.credentials.yaml` の browser-session secret から
   署名クッキー（`dsh-auth-*`）を生成し、非表示のアプリウィンドウ＋一時ローカルページでブラウザに設定して開き直す。
   認証状態は `%APPDATA%\DshLauncher\pwa-auth.json` とウィンドウタイトルで判断する。対象は `127.0.0.1` の PWA のみ。
-- **新しいブラウザの認証 URL**: `AuthUrl.cs`。起動ログ（`%APPDATA%\DshLauncher\logs\<id>.log`、`>>` 追記で
-  実行中も読める）の `dsh web: …?token=…` を新しい順に拾い、稼働中のサーバーが **3xx（`Set-Cookie: dsh-auth-…`
-  付き）を返すものだけ**を発行する（再起動前の古い行は 401 で捨てる）。検証クライアントは Cookie を保持しない
-  （保持すると古いトークンでも 303 になる）。トークンは保存しない。UI はボトムバー「認証 URL」・
-  ローカル行メニュー・トレイ、CLI は `dshl auth-url [--copy] [--open] [--json]`。リモートは未対応。
+- **新しいブラウザの認証 URL**: `AuthUrl.cs`（リモートは `Tunnel.cs`）。起動ログ（ローカルは
+  `%APPDATA%\DshLauncher\logs\<id>.log`、リモートは `~/.dsh/dshl/dsh.log` / Windows は `dsh-<port>.log`、
+  `>>` 追記で実行中も読める）の `dsh web: …?token=…` を新しい順に拾い、稼働中のサーバーが
+  **3xx（`Set-Cookie: dsh-auth-…` 付き）を返すものだけ**を発行する（再起動前の古い行は 401 で捨てる）。
+  検証クライアントは Cookie を保持しない（保持すると古いトークンでも 303 になる）。トークンは保存しない。
+  リモートは SSH 転送（`ssh -N -L 127.0.0.1:<local>:127.0.0.1:<port>`）越しに同じ検証をする。
+  URL は `127.0.0.1:<local>` の**この PC 用**で、ランチャー（または `--tunnel` の CLI）の実行中だけ有効。
+  UI はボトムバー「認証 URL」（選択中のマシン）・行メニュー・トレイ、CLI は
+  `dshl auth-url [--tunnel] [--copy] [--open] [--json]`。macOS 版（`AuthURL.swift`）はローカルのみ。
 - **アプリ内更新**: `Update.cs`。`releases/latest` を確認し、実行中の exe と同じ種類のアセットを
   SHA256 検証してから、非表示 PowerShell ヘルパーで exe を差し替えて再起動する（インストーラは呼ばない）。
   UI はステータスバーの「v<ver> に更新」とトレイ通知、CLI は `dshl update [--check]`。
   更新先に書き込めない/別インスタンスが起動中なら実行しない。
+- **DSH 本体の更新**: `DshUpdate.cs`。npm レジストリの **dist-tags**（`latest` / `next` / `alpha` …）から
+  最も新しい版を選び（プレリリースも対象）、`dsh` シム隣の
+  `node_modules\@deepseek-ai\dsh\package.json` の版と比べる（読めない時だけ `dsh --version`）。
+  チャネル名は UI に併記する（`0.2.2-rc.3（next）`）。
+  新しければローカル行に「更新」バッジ、選択行の詳細に「DSH を更新」ボタン、ステータスバーに
+  `DSH <ver> に更新`、トレイに更新項目、CLI は `dshl dsh-update [--check] [--dry-run] [--json]`。
+  更新は**停止 → `npm install -g @deepseek-ai/dsh@<確認した版>`（版を固定）→ 検証 → 起動**
+  （稼働していなかったら起動しない。失敗時は元の版で起動し直す）。確認は起動直後と6時間ごと。
+  **ローカル専用**（リモートは `setup --install`）。macOS 版は未対応。Debug ビルドだけ
+  `DSHL_DSH_TAGS` / `DSHL_DSH_NPM` の試験用シームを持つ（`DSHL_DSH_LATEST` は単一タグ用）。
 
 ## macOS 版（mac/）
 
