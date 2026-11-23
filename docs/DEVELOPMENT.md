@@ -24,6 +24,7 @@ dsh-launcher/
 │  ├─ BrowserApp.cs          # ブラウザの Web アプリ（PWA）検出・起動（app id 算出、プロファイル走査）
 │  ├─ PwaAuth.cs             # PWA の初回認証（署名クッキー発行・ブラウザ設定・認証状態）
 │  ├─ AuthUrl.cs             # 新しいブラウザの認証 URL（起動ログの ?token= をクッキー発行で検証して発行）
+│  ├─ Tunnel.cs              # リモート認証 URL 用の SSH 転送（ssh -N -L、GUI 終了時に破棄）
 │  ├─ Update.cs               # アプリ内更新（Releases 確認・SHA256 検証・exe 差し替え・再起動）
 │  ├─ DshUpdate.cs           # DSH 本体の更新（npm latest の確認・停止/インストール/起動・版比較）
 │  ├─ Setup.cs               # RemoteSetup/SetupScripts（Node+dsh 導入）、Ps1Encoding(BOM)
@@ -160,6 +161,15 @@ macOS 版も同じ `<Version>` を `mac/build.sh` が読む（個別のバージ
     - トークンは authority に依存しない。主 URL は `hosts.json` の `url` → ログの非ループバック URL →
       `http://127.0.0.1:<port>/` の順で決め、ループバック版も併記する。
     - トークンはファイルへ保存しない。UI/CLI の出力が唯一の配布経路（ダイアログにも注意書き）。
+    - **リモート**: 起動ログは SSH で読む（POSIX `tail -n 2000 ~/.dsh/dshl/dsh.log` /
+      Windows `Get-Content ~/.dsh/dshl/dsh-<port>.log -Tail 2000`）。検証は `Tunnel.cs` の
+      `ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes
+      -L 127.0.0.1:<13080+>:127.0.0.1:<port> <alias>` 越しに `http://127.0.0.1:<local>/?token=…` へ行う。
+      リモート dsh は loopback 接続・loopback Host として扱うため、`publicUrl` / `trustedHosts` の設定は不要。
+      Cookie の authority は `127.0.0.1:<local>` になる。転送は machine.Id ごとに使い回し、
+      GUI の `OnExit` で `SshTunnels.DisposeAll()`。CLI は `--tunnel` で Ctrl+C まで維持し、
+      ssh が死んだら「SSH トンネルが切れました。」で exit 1。ポートは 13080 から空きを探す。
+      リモートの URL はこの PC のブラウザ専用（他端末からは開けない）。
 15. **DSH 本体の更新はローカルだけ・版を固定**（`DshUpdate.cs`）:
     - 最新版は npm レジストリの **dist-tags**（`https://registry.npmjs.org/-/package/@deepseek-ai/dsh/dist-tags`）
       から取る。すべてのタグ（`latest` / `next` / `alpha` …）を semver で比べ、最も新しい版を候補にする
@@ -220,6 +230,14 @@ macOS 版も同じ `<Version>` を `mac/build.sh` が読む（個別のバージ
      稼働中ポートに向けると 401 判定を再現できる
    - GUI はボトムバー「認証 URL」を `InvokePattern` で押し、ダイアログの URL・コピー・「ブラウザで開く」を確認
      （ダイアログは `PrintWindow(hwnd, hdc, 2)` で撮る）
+   - リモート: `dshl auth-url <machine> --tunnel` が URL を出し、`--json` なら `ok` と URL。
+     `curl.exe --max-redirs 0 "<url>"` が `303` + `Set-Cookie: dsh-auth-…`、トークン無しの
+     `http://127.0.0.1:<local>/` が `401` になることを確認する。転送の ssh を止めると
+     「SSH トンネルが切れました。」で exit 1 になり、ポートが閉じる
+   - DSH のツール実行から GUI/exe を起動すると **Low 整合性**になり、ssh-agent の名前付きパイプを
+     開けず `Permission denied (publickey,password)` になることがある（ssh 単体は通る）。
+     その場合は `dotnet src\DshLauncher\bin\Debug\net9.0-windows\dshl.dll <args>`（Medium）で CLI を検証する。
+     通常の起動（エクスプローラー / スタートメニュー）は Medium
 9. 認証 URL の実効性: 返った URL を Cookie の無いブラウザプロファイルで開き、DSH の画面（401 でない）に
    なることを確認する。同じ URL を再び開いても 303 で通る（トークンは使い捨てではない）。
 10. DSH 本体の更新（本番の dsh を変えない）:
@@ -253,6 +271,8 @@ macOS 版も同じ `<Version>` を `mac/build.sh` が読む（個別のバージ
 | 「PWA が見つかりません」 | `dshl pwa --json` で `browser` / `browsers` / appId / profile を確認。各ブラウザのプロファイル（例 Chrome: `%LOCALAPPDATA%\Google\Chrome\User Data\Profile N\Web Applications\_crx_<id>`、Edge は `_crx__<id>`）に実フォルダがあるか。ローカル DSH の URL（host/port）がインストール時と一致しているか |
 | 「認証を更新しましたが、PWA が認証状態になりません」 | `dshl pwa --json` の `authAvailable` と `%APPDATA%\DshLauncher\pwa-auth.json` を確認。`$DSH_HOME/.credentials.yaml` に `client-connection/browser-session` があるか、PWA を `http://127.0.0.1:<port>` からインストールしたか（https オリジンは自動認証の対象外）。DSH 再起動後に再試行 |
 | 「認証 URL」を発行できない | `dshl auth-url --json` の `message` を確認。停止中なら起動する。ログ（`logs\<id>.log`）に `dsh web: …?token=…` があるか（`printUrl: false` だと出ない）、ランチャー経由で起動したか。再起動前の古い URL は 401 になる（`AuthUrl.cs` は 3xx + `Set-Cookie: dsh-auth-…` で検証して選ぶ） |
+| リモートの「認証 URL」を発行できない | GUI は自動で転送を作る。CLI は `--tunnel` が必須。`dshl status <machine>` が到達不可なら鍵 / ssh-agent、`dshl auth-url <machine> --tunnel --json` の `message`、リモートの `~/.dsh/dshl/dsh.log`（Windows は `dsh-<port>.log`）に `dsh web: …?token=…` があるかを見る。URL はこの PC のブラウザ専用で、ランチャーの実行中だけ有効 |
+| ランチャー経由の SSH だけ `Permission denied (publickey,password)` | ssh 単体は通るのにランチャーだけ失敗する場合、プロセスの整合性（Low=4096）で ssh-agent の名前付きパイプを開けていない。DSH のツール実行から起動した場合は `dotnet ...\dshl.dll`（Medium）で切り分ける。通常起動は Medium |
 
 | 更新が「別の DSH Launcher が起動中」で止まる | 他のランチャー（トレイ常駐）を終了してから再実行。同一 exe がロックされている |
 | 更新後に起動しない | %TEMP%\dshl-update-* の状態を確認。exe が差し替わっていれば手動起動で復帰可能。ウイルス対策が exe をロックしていないか確認 |
@@ -264,7 +284,7 @@ macOS 版も同じ `<Version>` を `mac/build.sh` が読む（個別のバージ
 ## 既知の未対応
 
 - URL（Tailscale）の設定 UI（今は `hosts.json` の `url` を直接編集）
-- リモートマシンの認証 URL 発行（今はローカル DSH のみ。リモートは `dsh.log` の取得と、SSH 経由の応答確認が要る）
+- リモート認証 URL の GUI 実機確認（CLI・HTTP は実機確認済み）
 - 9台以上での絞り込み欄の表示テスト（実装済みだが未検証）
 - GUI からのリモートセットアップ実行の実機確認（CLI では検証済み）
 - アプリ終了時にトレイを残すか終了するかの設定

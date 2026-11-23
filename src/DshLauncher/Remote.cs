@@ -300,7 +300,7 @@ internal static class Remote
     {
         var alias = machine.SshAlias ?? machine.Id;
         var (exit, stdout, _) = machine.Platform == "windows"
-            ? await Ssh.RunPowerShellAsync(alias, $"Get-Content (Join-Path $env:USERPROFILE '.dsh\\dshl\\dsh.log') -Tail {lines} -ErrorAction SilentlyContinue", 20)
+            ? await Ssh.RunPowerShellAsync(alias, $"Get-Content (Join-Path $env:USERPROFILE '.dsh\\dshl\\dsh-{machine.Port}.log') -Tail {lines} -ErrorAction SilentlyContinue", 20)
             : await Ssh.RunAsync(alias, $"tail -n {lines} \"$HOME/.dsh/dshl/dsh.log\" 2>/dev/null", 20);
         if (exit != 0 || stdout.Length == 0) return Array.Empty<string>();
         return stdout.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries);

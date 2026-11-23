@@ -72,6 +72,7 @@ internal static class Cli
         public bool Open;
         public bool Copy;
         public bool Check;
+        public bool Tunnel;
         public string? Config;
         public int Lines = 50;
         public List<string> Positionals = new();
@@ -101,6 +102,7 @@ internal static class Cli
                 case "--open": options.Open = true; break;
                 case "--copy": options.Copy = true; break;
                 case "--check": options.Check = true; break;
+                case "--tunnel": options.Tunnel = true; break;
                 case "--config" when i + 1 < args.Length: options.Config = args[++i]; break;
                 case "-n" when i + 1 < args.Length && int.TryParse(args[i + 1], out var lines):
                     options.Lines = lines; i++; break;
@@ -479,10 +481,17 @@ internal static class Cli
         return result.Ok ? 0 : 1;
     }
 
-    /// <summary>Issues the `?token=` URL that authenticates a new browser (local DSH only).</summary>
+    /// <summary>Issues the `?token=` URL that authenticates a new browser.</summary>
     private static int AuthUrl(LauncherConfig config, Options options, string? target)
     {
         var machine = Resolve(config, target);
+        var remote = machine.Kind != MachineKind.Local;
+        if (remote && !options.Tunnel)
+        {
+            Fail("リモートの認証 URL は --tunnel を付けて発行してください（URL を使う間トンネルを維持します）。");
+            return 1;
+        }
+
         var info = AuthUrls.IssueAsync(machine).GetAwaiter().GetResult();
 
         if (info.Ok)
@@ -504,17 +513,49 @@ internal static class Cli
                 pid = info.Pid,
                 message = info.Message,
             }, Json.Options));
-            return info.Ok ? 0 : 1;
+            if (!info.Ok)
+            {
+                SshTunnels.Dispose(machine.Id);
+                return 1;
+            }
+            return Hold(remote, machine, json: true);
         }
 
         if (!info.Ok)
         {
             Fail(info.Message);
+            SshTunnels.Dispose(machine.Id);
             return 1;
         }
 
         Console.WriteLine(info.Url);
-        return 0;
+        return Hold(remote, machine, json: false);
+    }
+
+    /// <summary>Keeps the SSH forward alive after printing its URL; returning would close it.</summary>
+    private static int Hold(bool remote, Machine machine, bool json)
+    {
+        if (!remote) return 0;
+        if (!json) Console.Error.WriteLine("dshl: SSH トンネルを維持しています。Ctrl+C で終了します。");
+
+        using var stop = new ManualResetEventSlim();
+        ConsoleCancelEventHandler onCancel = (_, e) => { e.Cancel = true; stop.Set(); };
+        Console.CancelKeyPress += onCancel;
+        try
+        {
+            while (!stop.Wait(500))
+            {
+                if (SshTunnels.IsAlive(machine.Id)) continue;
+                Fail("SSH トンネルが切れました。");
+                return 1;
+            }
+            return 0;
+        }
+        finally
+        {
+            Console.CancelKeyPress -= onCancel;
+            SshTunnels.Dispose(machine.Id);
+        }
     }
 
     private static void CopyToClipboard(string? text)
@@ -759,9 +800,10 @@ usage:
   dshl pwa [--open] [--dry-run] [--json]
                                 this PC's DSH as an installed browser web app (PWA):
                                 info, or --open to launch it (--dry-run prints the command line)
-  dshl auth-url [machine] [--copy] [--open] [--json]
+  dshl auth-url [machine] [--tunnel] [--copy] [--open] [--json]
                                 issue the ?token= URL that authenticates a new browser
-                                (this PC's DSH; the URL is valid while dsh runs)
+                                (this PC's DSH; remote machines need --tunnel, which keeps
+                                the SSH forward open until Ctrl+C)
   dshl gui                      open the launcher window
   dshl update [--check] [--dry-run] [--json]
                                 check GitHub Releases and update this exe in place

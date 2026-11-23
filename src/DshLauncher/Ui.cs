@@ -223,6 +223,12 @@ internal sealed class DshApplication : Application
         _window.Show();
         _window.BeginRefresh();
     }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        SshTunnels.DisposeAll();
+        base.OnExit(e);
+    }
 }
 
 internal sealed class MainWindow : Window
@@ -919,7 +925,7 @@ internal sealed class MainWindow : Window
         }
         Item("名前を変更…", () => Rename(machine));
         Item("ブラウザで開く", () => OpenUrl(machine));
-        if (machine.Kind == MachineKind.Local) Item("認証 URL を発行…", IssueLocalAuthUrl);
+        Item("認証 URL を発行…", () => _ = IssueAuthUrlAsync(machine));
         menu.Items.Add(new Separator());
         Item("起動", () => Act(machine, "start", false));
         Item("再起動", () => Act(machine, "restart", true));
@@ -1197,7 +1203,7 @@ internal sealed class MainWindow : Window
     }
 
     /// <summary>Issues the `?token=` URL that authenticates a new browser against a running DSH.</summary>
-    private async Task IssueAuthUrlAsync(Machine machine)
+    internal async Task IssueAuthUrlAsync(Machine machine)
     {
         if (_authOpening) return;
         _authOpening = true;
@@ -1340,6 +1346,8 @@ internal sealed class TrayIcon : IDisposable
                     : status.State is MachineState.NeedsSetup or MachineState.Unreachable ? Drawing.Color.FromArgb(0xd9, 0xa4, 0x41)
                     : Drawing.Color.FromArgb(0xa1, 0xa1, 0xa6),
             };
+            item.DropDownItems.Add("認証 URL を発行…", null, (_, _) =>
+                _window.Dispatcher.Invoke(() => { _ = _window.IssueAuthUrlAsync(machine); }));
             item.DropDownItems.Add("ブラウザで開く", null, (_, _) => OpenUrl(machine));
             item.DropDownItems.Add("再起動", null, (_, _) => Run(machine, "restart"));
             item.DropDownItems.Add("停止", null, (_, _) => Run(machine, "stop"));

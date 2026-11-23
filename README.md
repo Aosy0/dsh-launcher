@@ -30,7 +30,7 @@ README 内に併記しています。
 | リモート操作 | SSH＋`agent.sh` / `agent.ps1` | 同左（`agent.sh` は macOS の `nohup` / `lsof` 対応） |
 | PWA 検出 | 各ブラウザの `Web Applications\_crx_<id>` | `~/Applications/*.localized/*.app` の Info.plist |
 | PWA 初回認証 | 署名クッキーを自動生成して設定 | 未対応（認証 URL で対応） |
-| 認証 URL | 起動ログの `?token=` を検証して発行 | 同左（起動直後は最大 10 秒待つ） |
+| 認証 URL | 起動ログの `?token=` を検証して発行（リモートは SSH トンネル） | 同左（起動直後は最大 10 秒待つ。ローカルのみ） |
 | アプリ内更新 | あり（GitHub Releases） | なし（ビルドし直し） |
 | 配布 | 自己完結 exe / `install.ps1` | `.app` zip / `install.sh`（ad-hoc 署名） |
 | CLI | `dshl.exe`（GUI と同一） | `dshl`（`.app` 内バイナリのラッパー） |
@@ -179,10 +179,14 @@ dsh web は起動時に一度だけ `dsh web: <url>?token=...` を出力する�
 から候補を拾い、**稼働中のサーバーが 3xx + `Set-Cookie: dsh-auth-…` を返すものだけ**を採用する。
 古いトークンは 401 で捨てる（検証クライアントは Cookie を保持せず、リダイレクトも追わない）。
 
-- 対象は**ランチャー経由で起動したローカル DSH** のみ。リモートは未対応。
+- **ローカル**はランチャー経由で起動した DSH のログを読む。**リモート**は SSH で同じログを読み、
+  `ssh -N -L 127.0.0.1:<13080…>:127.0.0.1:<port>` の転送越しに同じ検証をする
+  （リモート側の設定変更は要らない）。GUI は発行時に転送を作り、CLI は `--tunnel` を付けると
+  URL を出したまま Ctrl+C まで転送を維持する。
+- リモートの URL は**この PC のブラウザ専用**で、ランチャー（または `--tunnel` の CLI）の実行中だけ有効。
 - トークンは認証情報そのもの。ランチャーはファイルに保存せず、画面・クリップボード・CLI の
   stdout / JSON に出すだけ。dsh を再起動すると URL は変わる。
-- Windows は 2.5 秒、macOS は 10 秒の猶予で起動直後のログ行を待つ。
+- 起動直後のログ行を Windows は 2.5 秒、macOS は 10 秒待つ。**macOS 版はローカルのみ**（リモート転送は未対応）。
 
 ### PWA（Web アプリ）を開く
 
@@ -238,7 +242,7 @@ dshl add <name> <ssh-alias> [linux|windows|macos]
 dshl remove <machine>
 dshl open [machine] [--dry-run]
 dshl pwa [--open] [--dry-run] [--json]
-dshl auth-url [machine] [--copy] [--open] [--json]
+dshl auth-url [machine] [--tunnel] [--copy] [--open] [--json]
 dshl dsh-update [--check] [--dry-run] [--json]
 dshl gui
 dshl --version
@@ -269,7 +273,7 @@ dshl --version
 | ログ表示（ローカルはファイル、リモートは tail） | ✅ 実装 | ✅ 実装 |
 | マシン追加（SSH エイリアス・ポート・プロファイル） | ✅ 実装 | ✅ 実装 |
 | PWA を開く（Web アプリ検出・起動） | ✅ 実機確認（初回認証も自動） | ✅ 検出・起動（初回認証の自動化は未対応） |
-| 新しいブラウザの認証 URL（`?token=` 付き）の発行 | ✅ 実機確認 | ✅ 実機確認 |
+| 新しいブラウザの認証 URL（`?token=` 付き）の発行 | ✅ 実機確認（リモートは SSH トンネル） | ✅ 実機確認（ローカルのみ） |
 | アプリ内更新（通知 → ダウンロード → 置き換え → 再起動） | ✅ 実装・実機確認 | — |
 | DSH 本体の更新（npm の dist-tags から最新を確認 → 停止 → インストール → 起動） | ✅ 実装（ラボで GUI/CLI 確認） | — |
 | 配布（Release / インストーラ / アイコン） | ✅ v0.1.10 から | ✅ .app / zip / `install.sh` |
@@ -308,6 +312,7 @@ dsh-launcher/
 │  ├─ BrowserApp.cs       # PWA の検出と起動（app id 算出・プロファイル走査）
 │  ├─ PwaAuth.cs          # PWA の初回認証（署名クッキー発行・ブラウザ設定）
 │  ├─ AuthUrl.cs          # 新しいブラウザの認証 URL
+│  ├─ Tunnel.cs           # リモート認証 URL 用の SSH 転送
 │  ├─ Update.cs           # アプリ内更新
 │  ├─ DshUpdate.cs        # DSH 本体の更新（npm latest の確認・停止/インストール/起動）
 │  ├─ Cli.cs              # dshl サブコマンド

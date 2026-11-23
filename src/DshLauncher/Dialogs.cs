@@ -139,9 +139,11 @@ internal sealed class AuthUrlWindow : DialogBase
         var stack = new StackPanel { Margin = new Thickness(16, 14, 16, 14) };
         stack.Children.Add(UiKit.Text("新しいブラウザの認証 URL", 13.5, Theme.Text, FontWeights.Medium));
 
-        var body = UiKit.Selectable(
-            $"{machine.DisplayName} の DSH に新しいブラウザを認証します。この URL を開くとそのブラウザが認証され、以降は通常の URL で使えます。URL は DSH の起動中にだけ発行でき、再起動すると変わります。",
-            12, Theme.Secondary);
+        var remote = machine.Kind == MachineKind.Ssh;
+        var bodyText = remote
+            ? $"{machine.DisplayName} の DSH に新しいブラウザを認証します。この URL は SSH トンネル経由で、DSH Launcher の実行中だけ開けます。"
+            : $"{machine.DisplayName} の DSH に新しいブラウザを認証します。この URL を開くとそのブラウザが認証され、以降は通常の URL で使えます。URL は DSH の起動中にだけ発行でき、再起動すると変わります。";
+        var body = UiKit.Selectable(bodyText, 12, Theme.Secondary);
         body.Margin = new Thickness(0, 7, 0, 0);
         stack.Children.Add(body);
 
@@ -160,7 +162,8 @@ internal sealed class AuthUrlWindow : DialogBase
         var footer = new Grid { Margin = new Thickness(0, 14, 0, 0) };
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var pid = UiKit.Text(info.Pid is int value ? $"PID {value}" : "", 10.5, Theme.Muted, family: Theme.Mono);
+        var footerText = info.Pid is int value ? $"PID {value}" : remote ? "SSH トンネル" : "";
+        var pid = UiKit.Text(footerText, 10.5, Theme.Muted, family: Theme.Mono);
         pid.VerticalAlignment = VerticalAlignment.Center;
         footer.Children.Add(pid);
 

@@ -37,11 +37,15 @@ macOS 版は SwiftUI + AppKit のメニューバーアプリと CLI（`mac/`）�
 - **PWA の初回認証**: 401 を検知したら `PwaAuth.cs` が `$DSH_HOME/.credentials.yaml` の browser-session secret から
   署名クッキー（`dsh-auth-*`）を生成し、非表示のアプリウィンドウ＋一時ローカルページでブラウザに設定して開き直す。
   認証状態は `%APPDATA%\DshLauncher\pwa-auth.json` とウィンドウタイトルで判断する。対象は `127.0.0.1` の PWA のみ。
-- **新しいブラウザの認証 URL**: `AuthUrl.cs`。起動ログ（`%APPDATA%\DshLauncher\logs\<id>.log`、`>>` 追記で
-  実行中も読める）の `dsh web: …?token=…` を新しい順に拾い、稼働中のサーバーが **3xx（`Set-Cookie: dsh-auth-…`
-  付き）を返すものだけ**を発行する（再起動前の古い行は 401 で捨てる）。検証クライアントは Cookie を保持しない
-  （保持すると古いトークンでも 303 になる）。トークンは保存しない。UI はボトムバー「認証 URL」・
-  ローカル行メニュー・トレイ、CLI は `dshl auth-url [--copy] [--open] [--json]`。リモートは未対応。
+- **新しいブラウザの認証 URL**: `AuthUrl.cs`（リモートは `Tunnel.cs`）。起動ログ（ローカルは
+  `%APPDATA%\DshLauncher\logs\<id>.log`、リモートは `~/.dsh/dshl/dsh.log` / Windows は `dsh-<port>.log`、
+  `>>` 追記で実行中も読める）の `dsh web: …?token=…` を新しい順に拾い、稼働中のサーバーが
+  **3xx（`Set-Cookie: dsh-auth-…` 付き）を返すものだけ**を発行する（再起動前の古い行は 401 で捨てる）。
+  検証クライアントは Cookie を保持しない（保持すると古いトークンでも 303 になる）。トークンは保存しない。
+  リモートは SSH 転送（`ssh -N -L 127.0.0.1:<local>:127.0.0.1:<port>`）越しに同じ検証をする。
+  URL は `127.0.0.1:<local>` の**この PC 用**で、ランチャー（または `--tunnel` の CLI）の実行中だけ有効。
+  UI はボトムバー「認証 URL」・行メニュー・トレイ、CLI は
+  `dshl auth-url [--tunnel] [--copy] [--open] [--json]`。macOS 版（`AuthURL.swift`）はローカルのみ。
 - **アプリ内更新**: `Update.cs`。`releases/latest` を確認し、実行中の exe と同じ種類のアセットを
   SHA256 検証してから、非表示 PowerShell ヘルパーで exe を差し替えて再起動する（インストーラは呼ばない）。
   UI はステータスバーの「v<ver> に更新」とトレイ通知、CLI は `dshl update [--check]`。

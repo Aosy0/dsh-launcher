@@ -201,23 +201,34 @@ PWA の自動認証（5.7）はこの PC の PWA プロファイルだけを対�
 - **トークンの性質**: dsh web は **プロセスごとにランダムな 32 バイト**の launch token を作り、
   `dsh web: <url>?token=...` を起動時に 1 回出力する（`printUrl` 既定 true）。トークンは永続化されず、
   その URL を開くと authority 単位の署名クッキーが発行される。**再起動すると URL は変わり、古いトークンは 401**。
-- **取得元**: ランチャーが起動した dsh のログ（`%APPDATA%\DshLauncher\logs\<id>.log`）。
+- **取得元**: ローカルはランチャーが起動した dsh のログ（`%APPDATA%\DshLauncher\logs\<id>.log`）。
   起動スクリプトは `>>` 追記リダイレクトなので、実行中も `FileShare.ReadWrite` で読める。
-  末尾 256 KB から `dsh web: <url>` を新しい順に最大 6 件拾い、`token` クエリを
+  リモートは同じログを SSH で読む（POSIX は `tail`、Windows は `dsh-<port>.log` を `Get-Content`）。
+  ローカルは末尾 256 KB、リモートは末尾 2000 行から `dsh web: <url>` を新しい順に最大 6 件拾い、`token` クエリを
   `http://127.0.0.1:<port>/?token=…` に投げ、**3xx かつ `Set-Cookie: dsh-auth-…` が付くものだけ**を採用する
   （再起動前の行は 401 で落ちる）。検証クライアントは **Cookie を保持しない**: サーバーは有効な Cookie が
   付いたリクエストも 303 で通すため、保持すると古いトークンを有効と誤認する。起動直後は最大 2.5 秒だけ再試行する。
-- **表示する URL**: `hosts.json` の `url` が設定されていればそれ、無ければログの URL が非ループバック
-  （`--public-url` で起動した場合など）ならそれ、それも無ければ `http://127.0.0.1:<port>/`。
+- **リモートは SSH 転送（`Tunnel.cs`）**: `ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes
+  -L 127.0.0.1:<localPort>:127.0.0.1:<machine.Port> <alias>` を非表示で起動し、
+  `127.0.0.1:<localPort>` が受け付けるまで待つ。検証はこの転送越しに `http://127.0.0.1:<localPort>/?token=…`
+  へ行う。リモート dsh は loopback からの接続と loopback の Host を見るため、`publicUrl` /
+  `trustedHosts` の追加設定は要らない。転送は machine.Id ごとに使い回し、GUI 終了時に破棄する。
+  ポートは 13080 から空きを探す。**URL はこの PC のブラウザ専用**で、ランチャーの実行中だけ有効
+  （CLI は `--tunnel` で Ctrl+C まで維持）。
+- **表示する URL**: ローカルは `hosts.json` の `url` が設定されていればそれ、無ければログの URL が非ループバック
+  （`--public-url` で起動した場合など）ならそれ、それも無ければ `http://127.0.0.1:<port>/`。リモートは
+  転送の `http://127.0.0.1:<localPort>/` だけを出す（公開 URL は転送の authority と一致しないため使わない）。
   トークンは authority に依存しないため、同じプロセスならループバックでも公開 URL でも有効。
-  ダイアログは主 URL と「この PC のブラウザ用」を並べ、それぞれコピーできる。
-- **UI / CLI**: ボトムバー「認証 URL」、ローカル行の右クリック、トレイの「認証 URL を発行…」。
-  ダイアログは URL のコピーと既定ブラウザでの起動、PID の表示。CLI は
-  `dshl auth-url [machine] [--copy] [--open] [--json]`（stdout は URL 1 行）。
+  ダイアログはローカルでは主 URL と「この PC のブラウザ用」を並べ、リモートでは転送 URL を出す。
+- **UI / CLI**: ボトムバー「認証 URL」（ローカル）、行の右クリック（全マシン）、トレイの
+  「認証 URL を発行…」とマシン別サブメニュー。ダイアログは URL のコピーと既定ブラウザでの起動、
+  PID（リモートは「SSH トンネル」）の表示。CLI は
+  `dshl auth-url [machine] [--tunnel] [--copy] [--open] [--json]`（stdout は URL 1 行）。
 - **安全**: URL は認証情報そのもの。ランチャーはトークンをファイルに保存せず、画面・クリップボード・
   CLI の stdout/JSON に出すだけ。ダイアログにも注意書きを出す。
-- **制限**: ランチャー経由で起動したローカル DSH のみ（リモートのヘルパーは `dsh.log` を持つが、
-  URL の妥当性検証に SSH 経由の HTTP 確認が要るため今回は未対応）。`printUrl: false` の構成では発行できない。
+- **制限**: ランチャー経由で起動した DSH のみ（ローカルは直接、リモートは SSH 転送越し）。
+  `printUrl: false` の構成では発行できない。リモートの URL はこの PC のブラウザ専用で、
+  ランチャー（または `--tunnel` の CLI）が動いている間だけ開ける。macOS 版はローカルのみ。
 
 ## 6. CLI（`dshl`、GUI と同一 exe）
 
@@ -230,8 +241,9 @@ dshl logs [machine] [-n 50]
 dshl setup <machine>          # ヘルパー配置のみ
 dshl open [machine] [--dry-run]              # 既定ブラウザで URL を開く
 dshl pwa [--open] [--dry-run] [--json]       # PWA（ブラウザの Web アプリ）の情報 / 起動
-dshl auth-url [machine] [--copy] [--open] [--json]
+dshl auth-url [machine] [--tunnel] [--copy] [--open] [--json]
                                              # 新しいブラウザを認証する ?token= URL の発行
+                                             # リモートは --tunnel で Ctrl+C まで SSH 転送を維持
 ```
 
 - `--dry-run` は実行するコマンド（受領書と同じ行）を出力して終了。
@@ -284,7 +296,7 @@ v1 への指摘「機能に対してウィンドウが贅沢（リッチすぎ�
 - 新しいブラウザの認証 URL: 起動ログの `dsh web: …?token=…` を拾い、**稼働中のサーバーが 3xx
   （`Set-Cookie: dsh-auth-…` 付き）を返すものだけ**を発行する（5.8）。検証クライアントは Cookie を保持しない。
   トークンはファイルに保存せず、外部 URL とループバック URL の両方を出す。
-  対象はランチャー経由で起動したローカル DSH のみ。
+  ローカルは直接、リモートは SSH 転送（`Tunnel.cs`）越しに発行する。
 - 配布: GitHub Releases（自己完結 exe を推奨 ＋ framework-dependent 軽量版、`install.ps1`、SHA256SUMS）。
   `v*` タグ push で Actions がビルドして Release を作成する（12）
 - アプリ内更新: `releases/latest` を確認してトレイ/ステータスバーに通知し、クリックで同じ種類のアセットを
@@ -473,7 +485,7 @@ Windows 版と同じ「SSH + 小さなヘルパー」方式。
 - 起動直後はトークン行が揃うまで最大 10 秒リトライする。
 - 表示 URL は `hosts.json` の `url` → ログの非ループバック URL → `http://127.0.0.1:<port>/`
   の順。ローカル URL も併記する。トークンは保存しない。
-- 対象はランチャー経由で起動したローカル DSH のみ（リモートは未対応）。
+- 対象はランチャー経由で起動したローカル DSH のみ（macOS 版。Windows 版は SSH 転送でリモートにも対応）。
 
 ### 13.7 PWA（Web アプリ）
 
